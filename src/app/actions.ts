@@ -21,6 +21,21 @@ import {
   setInvoiceStatus,
   type InvoiceInput,
 } from "@/lib/invoices";
+import {
+  saveRecurring,
+  setRecurringStatus,
+  deleteRecurring,
+  generateDue,
+  type RecurringInput,
+} from "@/lib/recurring";
+import { saveReceipt, deleteReceipt, ALLOWED_MIME } from "@/lib/receipts";
+import {
+  saveRule,
+  deleteRule,
+  reorderRule,
+  applyRulesToUncategorized,
+  type RuleInput,
+} from "@/lib/rules";
 
 const { categories, customers, products, settings, transactions } = schema;
 
@@ -32,7 +47,7 @@ export async function importStatement(
   boot();
   const file = formData.get("file") as File | null;
   if (!file) {
-    return { batch: "", parsed: 0, inserted: 0, duplicates: 0, errors: ["No file provided."] };
+    return { batch: "", parsed: 0, inserted: 0, duplicates: 0, autoCategorized: 0, errors: ["No file provided."] };
   }
   const text = await file.text();
   const { rows, errors } = parseStatementCsv(text);
@@ -225,6 +240,88 @@ export async function changeInvoiceStatus(id: string, status: string) {
   setInvoiceStatus(id, status);
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
+}
+
+// ---- Recurring invoices ---------------------------------------------------
+
+export async function saveRecurringAction(input: RecurringInput) {
+  boot();
+  const result = saveRecurring(input);
+  revalidatePath("/invoices");
+  revalidatePath("/invoices/recurring");
+  return result;
+}
+
+export async function setRecurringStatusAction(id: string, status: "active" | "paused") {
+  boot();
+  setRecurringStatus(id, status);
+  revalidatePath("/invoices");
+}
+
+export async function deleteRecurringAction(id: string) {
+  boot();
+  deleteRecurring(id);
+  revalidatePath("/invoices");
+}
+
+export async function generateDueInvoices() {
+  boot();
+  const result = generateDue();
+  revalidatePath("/invoices");
+  revalidatePath("/");
+  return result;
+}
+
+// ---- Receipts -------------------------------------------------------------
+
+export async function uploadReceipt(formData: FormData) {
+  boot();
+  const transactionId = String(formData.get("transactionId") ?? "");
+  const file = formData.get("file") as File | null;
+  if (!transactionId || !file) return { ok: false, error: "Missing file." };
+  if (file.size > 15 * 1024 * 1024) return { ok: false, error: "Max 15 MB." };
+  if (file.type && !ALLOWED_MIME.includes(file.type)) {
+    return { ok: false, error: "Only images and PDFs are accepted." };
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  await saveReceipt(transactionId, { name: file.name, type: file.type, bytes });
+  revalidatePath("/transactions");
+  return { ok: true };
+}
+
+export async function deleteReceiptAction(id: string) {
+  boot();
+  deleteReceipt(id);
+  revalidatePath("/transactions");
+}
+
+// ---- Categorisation rules -------------------------------------------------
+
+export async function saveRuleAction(input: RuleInput) {
+  boot();
+  saveRule(input);
+  revalidatePath("/rules");
+}
+
+export async function deleteRuleAction(id: string) {
+  boot();
+  deleteRule(id);
+  revalidatePath("/rules");
+}
+
+export async function reorderRuleAction(id: string, direction: "up" | "down") {
+  boot();
+  reorderRule(id, direction);
+  revalidatePath("/rules");
+}
+
+export async function applyRulesAction() {
+  boot();
+  const result = applyRulesToUncategorized();
+  revalidatePath("/transactions");
+  revalidatePath("/rules");
+  revalidatePath("/");
+  return result;
 }
 
 // ---- Settings -------------------------------------------------------------

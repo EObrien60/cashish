@@ -182,6 +182,90 @@ export const payments = sqliteTable(
   }),
 );
 
+// --- Recurring invoices ----------------------------------------------------
+// Templates that spawn real invoices on a schedule. No background worker (this
+// is a local app); due invoices are generated when the app is opened.
+export const recurringInvoices = sqliteTable(
+  "recurring_invoices",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().default(""), // optional label
+    customerId: text("customer_id").notNull(),
+    status: text("status").notNull().default("active"), // active | paused
+    frequency: text("frequency").notNull().default("monthly"), // weekly|monthly|quarterly|yearly
+    interval: integer("interval").notNull().default(1), // every N periods
+    startDate: text("start_date").notNull(),
+    nextRunDate: text("next_run_date").notNull(),
+    endDate: text("end_date"), // optional stop date
+    occurrencesLimit: integer("occurrences_limit"), // optional max count
+    occurrencesCount: integer("occurrences_count").notNull().default(0),
+    dueDays: integer("due_days").notNull().default(30),
+    autoSend: integer("auto_send", { mode: "boolean" }).notNull().default(false),
+    notes: text("notes").default(""),
+    terms: text("terms").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    nextIdx: index("rec_next_idx").on(t.nextRunDate),
+    custIdx: index("rec_cust_idx").on(t.customerId),
+  }),
+);
+
+export const recurringInvoiceLines = sqliteTable("recurring_invoice_lines", {
+  id: text("id").primaryKey(),
+  recurringId: text("recurring_id").notNull(),
+  productId: text("product_id"),
+  description: text("description").notNull().default(""),
+  quantity: real("quantity").notNull().default(1),
+  unitPrice: real("unit_price").notNull().default(0),
+  vatRateId: text("vat_rate_id"),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+// --- Receipt attachments ----------------------------------------------------
+// Files (images/PDFs) attached to a bank transaction. The blob lives on disk
+// under data/receipts; only metadata + path is stored here.
+export const receipts = sqliteTable(
+  "receipts",
+  {
+    id: text("id").primaryKey(),
+    transactionId: text("transaction_id").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull().default("application/octet-stream"),
+    size: integer("size").notNull().default(0),
+    storagePath: text("storage_path").notNull(), // relative to project root
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    txIdx: index("receipt_tx_idx").on(t.transactionId),
+  }),
+);
+
+// --- Categorisation rules ---------------------------------------------------
+// Auto-assign category + VAT to transactions whose text/MCC matches. Lower
+// sortOrder runs first; first matching rule wins. Applied on import and via a
+// manual "apply rules" sweep.
+export const categoryRules = sqliteTable(
+  "category_rules",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").default(""),
+    matchField: text("match_field").notNull().default("description"), // description|reference|payer|mcc|any
+    matchType: text("match_type").notNull().default("contains"), // contains|equals|startsWith|regex
+    matchValue: text("match_value").notNull().default(""),
+    direction: text("direction").notNull().default("any"), // any|in|out
+    categoryId: text("category_id"),
+    vatRateId: text("vat_rate_id"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    timesApplied: integer("times_applied").notNull().default(0),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    orderIdx: index("rule_order_idx").on(t.sortOrder),
+  }),
+);
+
 export type Transaction = typeof transactions.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type VatRate = typeof vatRates.$inferSelect;
@@ -191,3 +275,7 @@ export type Invoice = typeof invoices.$inferSelect;
 export type InvoiceLine = typeof invoiceLines.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
+export type RecurringInvoice = typeof recurringInvoices.$inferSelect;
+export type RecurringInvoiceLine = typeof recurringInvoiceLines.$inferSelect;
+export type Receipt = typeof receipts.$inferSelect;
+export type CategoryRule = typeof categoryRules.$inferSelect;

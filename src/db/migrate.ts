@@ -147,7 +147,71 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS pay_inv_idx ON payments (invoice_id);
 CREATE INDEX IF NOT EXISTS pay_date_idx ON payments (date);
+
+CREATE TABLE IF NOT EXISTS recurring_invoices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  customer_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  frequency TEXT NOT NULL DEFAULT 'monthly',
+  interval INTEGER NOT NULL DEFAULT 1,
+  start_date TEXT NOT NULL,
+  next_run_date TEXT NOT NULL,
+  end_date TEXT,
+  occurrences_limit INTEGER,
+  occurrences_count INTEGER NOT NULL DEFAULT 0,
+  due_days INTEGER NOT NULL DEFAULT 30,
+  auto_send INTEGER NOT NULL DEFAULT 0,
+  notes TEXT DEFAULT '',
+  terms TEXT DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS rec_next_idx ON recurring_invoices (next_run_date);
+CREATE INDEX IF NOT EXISTS rec_cust_idx ON recurring_invoices (customer_id);
+
+CREATE TABLE IF NOT EXISTS recurring_invoice_lines (
+  id TEXT PRIMARY KEY,
+  recurring_id TEXT NOT NULL,
+  product_id TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0,
+  vat_rate_id TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS receipts (
+  id TEXT PRIMARY KEY,
+  transaction_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size INTEGER NOT NULL DEFAULT 0,
+  storage_path TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS receipt_tx_idx ON receipts (transaction_id);
+
+CREATE TABLE IF NOT EXISTS category_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT DEFAULT '',
+  match_field TEXT NOT NULL DEFAULT 'description',
+  match_type TEXT NOT NULL DEFAULT 'contains',
+  match_value TEXT NOT NULL DEFAULT '',
+  direction TEXT NOT NULL DEFAULT 'any',
+  category_id TEXT,
+  vat_rate_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  times_applied INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS rule_order_idx ON category_rules (sort_order);
 `;
+
+// Bump when DDL changes so existing databases re-run applySchema (all
+// statements are IF NOT EXISTS, so re-running is safe and only adds what's
+// missing). Gating on user_version avoids re-running DDL on every connection.
+export const SCHEMA_VERSION = 2;
 
 export function applySchema(sqlite: DatabaseType.Database) {
   sqlite.exec(DDL);

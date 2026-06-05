@@ -12,11 +12,13 @@ import {
   IconVat,
   IconSettings,
   IconCoins,
+  IconRules,
 } from "./icons";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: IconDashboard },
   { href: "/transactions", label: "Transactions", icon: IconLedger },
+  { href: "/rules", label: "Rules", icon: IconRules },
   { href: "/invoices", label: "Invoices", icon: IconInvoice },
   { href: "/customers", label: "Customers", icon: IconUsers },
   { href: "/products", label: "Products", icon: IconBox },

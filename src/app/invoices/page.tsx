@@ -3,15 +3,19 @@ import { boot } from "@/lib/boot";
 import { db, schema } from "@/db/client";
 import { desc } from "drizzle-orm";
 import { listInvoices } from "@/lib/invoices";
+import { listRecurring, countDue } from "@/lib/recurring";
 import { money, fmtDate, round2 } from "@/lib/format";
 import { Card, PageHeader, StatusBadge, EmptyState } from "@/components/ui";
 import { IconPlus } from "@/components/icons";
+import { RecurringPanel } from "@/components/RecurringPanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function InvoicesPage() {
   boot();
   const invoices = listInvoices();
+  const recurring = listRecurring();
+  const dueCount = countDue();
   const customers = new Map(
     db.select().from(schema.customers).all().map((c) => [c.id, c]),
   );
@@ -34,6 +38,24 @@ export default async function InvoicesPage() {
           </Link>
         }
       />
+
+      <div className="mb-4">
+        <RecurringPanel
+          recurring={recurring.map((r) => ({
+            id: r.id,
+            name: r.name,
+            customerName: r.customerName,
+            status: r.status,
+            frequency: r.frequency,
+            interval: r.interval,
+            nextRunDate: r.nextRunDate,
+            due: r.due,
+            occurrencesCount: r.occurrencesCount,
+            autoSend: r.autoSend,
+          }))}
+          dueCount={dueCount}
+        />
+      </div>
 
       <Card className="overflow-hidden">
         {invoices.length === 0 ? (

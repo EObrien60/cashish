@@ -1,6 +1,7 @@
 import { boot } from "@/lib/boot";
 import { db, schema } from "@/db/client";
 import { desc } from "drizzle-orm";
+import { receiptCounts } from "@/lib/receipts";
 import { PageHeader } from "@/components/ui";
 import { TransactionsView } from "@/components/TransactionsView";
 
@@ -28,6 +29,7 @@ export default async function TransactionsPage({
     .from(schema.vatRates)
     .orderBy(schema.vatRates.sortOrder)
     .all();
+  const counts = receiptCounts(transactions.map((t) => t.id));
 
   return (
     <div>
@@ -39,6 +41,7 @@ export default async function TransactionsPage({
         transactions={transactions}
         categories={categories}
         vatRates={vatRates}
+        receiptCounts={counts}
         initialFilter={sp.filter}
       />
     </div>

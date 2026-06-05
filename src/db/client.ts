@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
-import { applySchema } from "./migrate";
+import { applySchema, SCHEMA_VERSION } from "./migrate";
 import { seedInto } from "./seed";
 
 // ---------------------------------------------------------------------------
@@ -22,24 +22,20 @@ declare global {
   var __cashish_db__: ReturnType<typeof createDb> | undefined;
 }
 
-function tableExists(sqlite: Database.Database, name: string): boolean {
-  const row = sqlite
-    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
-    .get(name);
-  return !!row;
-}
-
 function createDb() {
   const sqlite = new Database(DB_PATH);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("busy_timeout = 10000");
   sqlite.pragma("foreign_keys = ON");
 
-  // Only ever WRITE when initialisation is actually needed. Under parallel
-  // build workers, gating on cheap reads means an already-initialised DB takes
-  // the read-only path and never contends for the write lock.
-  if (!tableExists(sqlite, "settings")) {
+  // Migrations are gated on PRAGMA user_version. Existing databases re-run the
+  // (idempotent, IF-NOT-EXISTS) DDL once when SCHEMA_VERSION bumps, picking up
+  // new tables; already-migrated connections skip straight past and never
+  // contend for the write lock — important under parallel build workers.
+  const version = Number(sqlite.pragma("user_version", { simple: true }));
+  if (version < SCHEMA_VERSION) {
     applySchema(sqlite);
+    sqlite.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
   const d = drizzle(sqlite, { schema });
   const seeded =

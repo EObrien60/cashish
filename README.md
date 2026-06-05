@@ -42,6 +42,27 @@ custom lines, with live VAT/total calculation. Invoices print to a clean PDF
 status (sent → partial → paid) updates itself, and overdue invoices flag
 automatically.
 
+**Recurring invoices.** Set up a schedule (weekly/monthly/quarterly/yearly, with
+an optional end date or invoice count) for retainers and subscriptions. Because
+this is a local app with no always-on server, due invoices are generated
+*when you open the app*: the Invoices page shows a "ready to generate" banner and
+creates them in one click — including catch-up for any periods missed while the
+app was closed. Generated invoices are drafts by default, or auto-marked "sent"
+per schedule.
+
+### Categorisation rules
+Teach cashish to file transactions automatically. A rule matches on a field
+(description / reference / payer / MCC / any) with contains / equals / starts-with
+/ regex, optionally limited to money-in or money-out, and assigns a category +
+VAT rate. Rules run top-to-bottom (first match wins) **on import** and via an
+**Apply rules** sweep over existing uncategorised transactions. Manual
+categorisations are never overwritten.
+
+### Receipts
+Attach images or PDFs to any bank transaction (paperclip column in the ledger).
+Files are stored on disk under `data/receipts/` — only metadata lives in the DB,
+so the database stays small and you can browse/back-up receipts directly.
+
 ### Reports
 Profit & loss and monthly cashflow over any period (month, quarter, YTD, last 12
 months, all time), broken down by category.
@@ -65,5 +86,12 @@ Tailwind. No external services.
 
 ## Data & backups
 
-Everything lives in `cashish.db` in the project root. Back it up by copying that
-file. Delete it to start fresh (it'll be recreated and reseeded on next boot).
+Everything lives in `cashish.db` in the project root, with receipt files under
+`data/receipts/`. Back up by copying both. Delete the DB to start fresh (it's
+recreated and reseeded on next boot). Schema upgrades are applied automatically
+on boot via a `PRAGMA user_version` migration gate.
+
+## Roadmap
+
+Payroll (employees, RPN import, payroll JSON export for ROS), then packaging the
+app for desktop ("electronifying").

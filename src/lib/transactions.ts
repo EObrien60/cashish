@@ -2,6 +2,7 @@ import { db, schema } from "@/db/client";
 import { and, desc, eq, gte, inArray, lte, like, or, sql } from "drizzle-orm";
 import { uid } from "./id";
 import type { ParsedRow } from "./import";
+import { applyRulesToTransactions } from "./rules";
 
 const { transactions } = schema;
 
@@ -10,6 +11,7 @@ export type ImportSummary = {
   parsed: number;
   inserted: number;
   duplicates: number;
+  autoCategorized: number;
   errors: string[];
 };
 
@@ -27,6 +29,7 @@ export function importTransactions(
       parsed: 0,
       inserted: 0,
       duplicates: 0,
+      autoCategorized: 0,
       errors: parseErrors,
     };
   }
@@ -44,16 +47,23 @@ export function importTransactions(
   const fresh = rows.filter((r) => !existing.has(r.id));
   const duplicates = rows.length - fresh.length;
 
+  let autoCategorized = 0;
   if (fresh.length > 0) {
     const insertRows = fresh.map((r) => ({ ...r, importBatch: batch }));
     // chunk to stay well under SQLite's variable limit
     const CHUNK = 200;
-    const tx = db.transaction((trx) => {
+    db.transaction((trx) => {
       for (let i = 0; i < insertRows.length; i += CHUNK) {
         trx.insert(transactions).values(insertRows.slice(i, i + CHUNK)).run();
       }
     });
-    tx;
+    // Auto-categorise the freshly imported transactions using saved rules.
+    const freshRows = db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.importBatch, batch))
+      .all();
+    autoCategorized = applyRulesToTransactions(freshRows).updated;
   }
 
   return {
@@ -61,6 +71,7 @@ export function importTransactions(
     parsed: rows.length,
     inserted: fresh.length,
     duplicates,
+    autoCategorized,
     errors: parseErrors,
   };
 }

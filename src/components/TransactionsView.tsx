@@ -9,21 +9,26 @@ import {
   categorizeTx,
   setTxVat,
   bulkCategorizeTx,
+  applyRulesAction,
 } from "@/app/actions";
 import type { ImportSummary } from "@/lib/transactions";
 import { Card, EmptyState, Dot } from "@/components/ui";
+import { ReceiptsModal } from "@/components/ReceiptsModal";
 import {
   IconUpload,
   IconSearch,
   IconArrowDown,
   IconArrowUp,
   IconCheck,
+  IconPaperclip,
+  IconWand,
 } from "@/components/icons";
 
 type Props = {
   transactions: Transaction[];
   categories: Category[];
   vatRates: VatRate[];
+  receiptCounts: Record<string, number>;
   initialFilter?: string;
 };
 
@@ -31,6 +36,7 @@ export function TransactionsView({
   transactions,
   categories,
   vatRates,
+  receiptCounts,
   initialFilter,
 }: Props) {
   const router = useRouter();
@@ -41,6 +47,8 @@ export function TransactionsView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
+  const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
+  const [rulesMsg, setRulesMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const catMap = useMemo(
@@ -128,6 +136,15 @@ export function TransactionsView({
     });
   }
 
+  function applyRules() {
+    startTransition(async () => {
+      const r = await applyRulesAction();
+      setRulesMsg(`Rules applied — ${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised.`);
+      router.refresh();
+      setTimeout(() => setRulesMsg(null), 4000);
+    });
+  }
+
   const uncatCount = transactions.filter((t) => !t.categoryId).length;
 
   return (
@@ -170,6 +187,11 @@ export function TransactionsView({
               <span className="text-ink-faint">
                 {summary.duplicates} already on file (skipped)
               </span>
+              {summary.autoCategorized > 0 && (
+                <span className="text-brand">
+                  {summary.autoCategorized} auto-categorised by rules
+                </span>
+              )}
               <span className="text-ink-faint">{summary.parsed} rows read</span>
             </div>
             {summary.errors.length > 0 && (
@@ -218,7 +240,20 @@ export function TransactionsView({
         >
           Uncategorised {uncatCount > 0 && `(${uncatCount})`}
         </button>
+        <button
+          onClick={applyRules}
+          className="btn-outline"
+          title="Apply your saved categorisation rules to uncategorised transactions"
+        >
+          <IconWand className="h-4 w-4" /> Apply rules
+        </button>
       </div>
+
+      {rulesMsg && (
+        <div className="mb-3 rounded-lg bg-brand-wash px-4 py-2.5 text-sm text-brand-dark">
+          {rulesMsg}
+        </div>
+      )}
 
       {/* Bulk bar */}
       {selected.size > 0 && (
@@ -277,6 +312,7 @@ export function TransactionsView({
                   <th className="th w-56">Category</th>
                   <th className="th w-36">VAT</th>
                   <th className="th w-32 text-right">Amount</th>
+                  <th className="th w-16 text-center">Receipt</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -383,6 +419,26 @@ export function TransactionsView({
                       >
                         {moneySigned(t.amount)}
                       </td>
+                      <td className="td text-center">
+                        <button
+                          onClick={() => setReceiptTx(t)}
+                          title={
+                            receiptCounts[t.id]
+                              ? `${receiptCounts[t.id]} receipt(s)`
+                              : "Attach receipt"
+                          }
+                          className={`relative inline-grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-black/5 ${
+                            receiptCounts[t.id] ? "text-brand" : "text-ink-faint"
+                          }`}
+                        >
+                          <IconPaperclip className="h-4 w-4" />
+                          {receiptCounts[t.id] > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-brand px-0.5 text-[9px] font-bold text-white">
+                              {receiptCounts[t.id]}
+                            </span>
+                          )}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -404,6 +460,7 @@ export function TransactionsView({
                   <td className="td text-right tabular font-bold">
                     {moneySigned(totals.net)}
                   </td>
+                  <td className="td" />
                 </tr>
               </tfoot>
             </table>
@@ -415,6 +472,12 @@ export function TransactionsView({
           Saving…
         </div>
       )}
+
+      <ReceiptsModal
+        transaction={receiptTx}
+        open={!!receiptTx}
+        onClose={() => setReceiptTx(null)}
+      />
     </div>
   );
 }

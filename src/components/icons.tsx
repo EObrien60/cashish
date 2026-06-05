@@ -54,3 +54,10 @@ export const IconSearch = (p: P) => (<Svg {...p}><circle cx="11" cy="11" r="7" /
 export const IconEdit = (p: P) => (<Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></Svg>);
 export const IconChevron = (p: P) => (<Svg {...p}><path d="m9 18 6-6-6-6" /></Svg>);
 export const IconCoins = (p: P) => (<Svg {...p}><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></Svg>);
+export const IconRules = (p: P) => (<Svg {...p}><path d="M4 7h10M4 12h16M4 17h7" /><circle cx="18" cy="7" r="2" /><circle cx="15" cy="17" r="2" /></Svg>);
+export const IconPaperclip = (p: P) => (<Svg {...p}><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L10 18.3a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" /></Svg>);
+export const IconRepeat = (p: P) => (<Svg {...p}><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></Svg>);
+export const IconPause = (p: P) => (<Svg {...p}><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></Svg>);
+export const IconPlay = (p: P) => (<Svg {...p}><path d="M7 4v16l13-8z" /></Svg>);
+export const IconWand = (p: P) => (<Svg {...p}><path d="m15 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2Z" /><path d="M4 20 14 10" /><path d="m13 7 4 4" /></Svg>);
+export const IconFile = (p: P) => (<Svg {...p}><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></Svg>);
