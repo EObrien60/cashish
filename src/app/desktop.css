@@ -1,0 +1,108 @@
+/* ===========================================================================
+   Desktop skin — applied ONLY when the app runs inside the cashish macOS
+   shell (the root layout adds `.desktop` to <html> when it sees the desktop
+   User-Agent). Every rule is scoped under `.desktop`, so the hosted web build
+   is completely unaffected. Goal: a sleek, native-feeling macOS surface —
+   frosted vibrancy sidebar, hidden-inset traffic lights, refined density.
+   =========================================================================== */
+
+/* Let the native window vibrancy show through. */
+.desktop,
+.desktop body {
+  background: transparent !important;
+}
+
+/* The content surface sits on a solid panel over the vibrancy. */
+.desktop main {
+  background: #f6f4ee;
+}
+
+/* Draggable title region across the top of the content area (the page header
+   has enough top padding that this never sits over interactive controls). */
+.desktop .app-drag-strip {
+  position: fixed;
+  top: 0;
+  left: 15rem; /* clear the sidebar */
+  right: 0;
+  height: 30px;
+  z-index: 30;
+  -webkit-app-region: drag;
+}
+
+/* --- Sidebar: frosted material + traffic-light clearance ------------------ */
+.desktop aside {
+  background: rgba(247, 245, 239, 0.6) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border-right: 1px solid rgba(16, 34, 27, 0.07);
+  -webkit-app-region: drag;
+}
+/* Push the brand below the inset traffic lights. */
+.desktop .sidebar-head {
+  padding-top: 22px;
+  height: auto;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(16, 34, 27, 0.06);
+}
+/* Anything interactive in the (draggable) sidebar must opt out of dragging. */
+.desktop aside a,
+.desktop aside button,
+.desktop aside input,
+.desktop aside select {
+  -webkit-app-region: no-drag;
+}
+
+/* Nav items: tighter, more native rows with a crisper active state. */
+.desktop aside nav a {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-radius: 7px;
+}
+
+/* --- Surfaces & controls: a touch tighter and crisper -------------------- */
+.desktop .card {
+  border-radius: 11px;
+  box-shadow:
+    0 1px 1px rgba(16, 34, 27, 0.03),
+    0 6px 20px rgba(16, 34, 27, 0.05);
+}
+.desktop .btn {
+  border-radius: 8px;
+}
+.desktop .input {
+  border-radius: 8px;
+}
+
+/* Slimmer, lower-contrast scrollbars to match the OS. */
+.desktop ::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.desktop ::-webkit-scrollbar-thumb {
+  background: rgba(16, 34, 27, 0.18);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.desktop ::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 34, 27, 0.3);
+  background-clip: padding-box;
+}
+
+/* Native text selection + no rubber-band overscroll feel. */
+.desktop * {
+  cursor: default;
+}
+.desktop input,
+.desktop textarea {
+  cursor: text;
+}
+.desktop a,
+.desktop button,
+.desktop select,
+.desktop [role="button"] {
+  cursor: pointer;
+}
+.desktop {
+  overscroll-behavior: none;
+}

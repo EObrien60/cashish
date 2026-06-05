@@ -24,7 +24,11 @@ declare global {
 
 function createDb() {
   const sqlite = new Database(DB_PATH);
-  sqlite.pragma("journal_mode = WAL");
+  // TRUNCATE (not WAL): single-user app, and WAL's -wal/-shm sidecars cause
+  // cross-process delete races (SQLITE_IOERR_DELETE_NOENT) under `next build`'s
+  // parallel workers. TRUNCATE keeps a single rollback journal, truncated not
+  // deleted, and read-only workers create no journal at all.
+  sqlite.pragma("journal_mode = TRUNCATE");
   sqlite.pragma("busy_timeout = 10000");
   sqlite.pragma("foreign_keys = ON");
 

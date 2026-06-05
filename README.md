@@ -113,6 +113,33 @@ Monthly payroll for employees and directors, driven by RPNs.
 > **Always validate the PSR in ROS before filing live.** Set your Employer
 > Registration Number in Settings first.
 
+## Desktop app (macOS)
+
+The same app ships as a native macOS `.app` via Electron. The Electron shell
+runs the Next.js server in-process and shows it in a native window with
+hidden-inset traffic lights, a frosted vibrancy sidebar and a draggable title
+region. Desktop styling is layered on **only** when running in the shell (the
+layout adds a `.desktop` class when it sees the shell's User-Agent), so the
+hosted web build is byte-for-byte identical and completely unaffected.
+
+App data (the SQLite DB + receipt files) is stored in
+`~/Library/Application Support/cashish/`, not the read-only bundle.
+
+```bash
+npm run app:dist      # build the .app  → dist/cashish-darwin-arm64/cashish.app
+npm run electron:dev  # run the shell against a running `npm run dev` (fast iteration)
+```
+
+`app:dist` rebuilds `better-sqlite3` for Node (for `next build`), builds the
+web app, rebuilds `better-sqlite3` for Electron's ABI, then packages with
+`@electron/packager`. The app is **unsigned and not notarized** — to launch it
+the first time, right-click → Open (or `xattr -dr com.apple.quarantine` the
+`.app`). Signing/notarization is a later step.
+
+> Note: after building the `.app`, `better-sqlite3` is left compiled for
+> Electron's ABI. `app:dist` rebuilds it for Node automatically on its next run;
+> to use `npm run dev` in between, run `npm rebuild better-sqlite3` first.
+
 ## Roadmap
 
-Package the app for desktop ("electronifying").
+Code-sign + notarize the macOS build; Windows/Linux packaging.

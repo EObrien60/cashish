@@ -33,7 +33,7 @@ export function Sidebar() {
   const path = usePathname();
   return (
     <aside className="no-print fixed inset-y-0 left-0 flex w-60 flex-col border-r border-line bg-card">
-      <div className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
+      <div className="sidebar-head flex items-center gap-2.5 px-5 h-16 border-b border-line">
         <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-white">
           <IconCoins className="h-5 w-5" />
         </span>

@@ -6,10 +6,12 @@ import { join, extname } from "path";
 
 const { receipts } = schema;
 
-// Blobs live on disk next to the DB (data/receipts/), not in SQLite — keeps the
-// DB small and lets you browse/back-up receipts directly. Only metadata + a
-// relative path is stored in the receipts table.
-const RECEIPTS_DIR = join(process.cwd(), "data", "receipts");
+// Blobs live on disk (data/receipts/), not in SQLite — keeps the DB small and
+// lets you browse/back-up receipts directly. Only metadata + a relative path is
+// stored in the receipts table. The desktop shell points CASHISH_DATA_DIR at
+// its writable userData dir; on the web/CLI it defaults to the project root.
+const DATA_ROOT = process.env.CASHISH_DATA_DIR ?? process.cwd();
+const RECEIPTS_DIR = join(DATA_ROOT, "data", "receipts");
 
 function ensureDir() {
   if (!existsSync(RECEIPTS_DIR)) mkdirSync(RECEIPTS_DIR, { recursive: true });
@@ -31,7 +33,7 @@ export async function saveReceipt(
   const id = uid();
   const ext = extname(file.name) || mimeExt(file.type);
   const rel = join("data", "receipts", `${id}${ext}`);
-  writeFileSync(join(process.cwd(), rel), file.bytes);
+  writeFileSync(join(DATA_ROOT, rel), file.bytes);
   db.insert(receipts)
     .values({
       id,
@@ -66,7 +68,7 @@ export function receiptCounts(transactionIds: string[]): Record<string, number> 
 export function getReceipt(id: string) {
   const r = db.select().from(receipts).where(eq(receipts.id, id)).get();
   if (!r) return null;
-  const abs = join(process.cwd(), r.storagePath);
+  const abs = join(DATA_ROOT, r.storagePath);
   if (!existsSync(abs)) return { meta: r, bytes: null as Buffer | null };
   return { meta: r, bytes: readFileSync(abs) };
 }
@@ -74,7 +76,7 @@ export function getReceipt(id: string) {
 export function deleteReceipt(id: string) {
   const r = db.select().from(receipts).where(eq(receipts.id, id)).get();
   if (!r) return;
-  const abs = join(process.cwd(), r.storagePath);
+  const abs = join(DATA_ROOT, r.storagePath);
   try {
     if (existsSync(abs)) rmSync(abs);
   } catch {

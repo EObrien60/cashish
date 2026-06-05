@@ -2,6 +2,9 @@
   "name": "cashish",
   "version": "0.1.0",
   "private": true,
+  "author": "cashish",
+  "description": "Lightweight EUR accounting — statements, invoicing, VAT, payroll.",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "prebuild": "tsx scripts/init-db.ts",
@@ -9,7 +12,11 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "electron": "electron .",
+    "electron:dev": "CASHISH_DEV_URL=http://localhost:3000 electron .",
+    "app:pack": "electron-packager . cashish --platform=darwin --arch=arm64 --out=dist --overwrite --icon=build/icon.icns --app-bundle-id=io.triplebolt.cashish --app-category-type=public.app-category.finance --prune=true --ignore=\"^/dist($|/)\" --ignore=\"^/src($|/)\" --ignore=\"^/\\.next/cache\" --ignore=\"^/build/.*\\.(html|png)$\" --ignore=\"\\.db$\" --ignore=\"^/\\.git\"",
+    "app:dist": "npm rebuild better-sqlite3 && npm run build && electron-rebuild -f -w better-sqlite3 && npm run app:pack"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -20,6 +27,8 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "@electron/rebuild": "^3.7.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.7",
     "@types/papaparse": "^5.3.15",
@@ -27,9 +36,37 @@
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.30.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "io.triplebolt.cashish",
+    "productName": "cashish",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": false,
+    "files": [
+      "electron/**",
+      ".next/**",
+      "!.next/cache/**",
+      "public/**",
+      "next.config.mjs",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "target": [
+        "dir"
+      ],
+      "identity": null,
+      "icon": "build/icon.icns"
+    },
+    "npmRebuild": true
   }
 }

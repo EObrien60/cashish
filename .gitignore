@@ -1,7 +1,7 @@
 node_modules
 .next
 out
-build
+dist
 data
 *.db
 *.db-journal
@@ -19,3 +19,7 @@ drizzle/meta
 account-statement*.csv
 *.statement.csv
 .playwright-mcp
+
+# Electron build intermediates (the .icns + logo source are committed)
+build/icon-1024.png
+build/*.iconset
