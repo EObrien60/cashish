@@ -1,0 +1,20 @@
+node_modules
+.next
+out
+build
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+.env.local
+.DS_Store
+next-env.d.ts
+*.tsbuildinfo
+drizzle/meta
+
+# Real bank statements contain private financial data — never commit them.
+# (Keep your sample locally; it's just the import format reference.)
+account-statement*.csv
+*.statement.csv
+.playwright-mcp
