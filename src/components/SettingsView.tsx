@@ -26,6 +26,7 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
     city: settings.city ?? "",
     country: settings.country ?? "Ireland",
     vatNumber: settings.vatNumber ?? "",
+    employerRegNumber: settings.employerRegNumber ?? "",
     email: settings.email ?? "",
     phone: settings.phone ?? "",
     iban: settings.iban ?? "",
@@ -183,6 +184,15 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
                 onChange={(e) => setB("vatNumber", e.target.value)}
               />
             </div>
+          </div>
+          <div>
+            <label className="label">Employer registration number (payroll)</label>
+            <input
+              className="input tabular"
+              value={biz.employerRegNumber}
+              onChange={(e) => setB("employerRegNumber", e.target.value)}
+              placeholder="1234567T"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

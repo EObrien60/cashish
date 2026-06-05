@@ -91,7 +91,28 @@ Everything lives in `cashish.db` in the project root, with receipt files under
 recreated and reseeded on next boot). Schema upgrades are applied automatically
 on boot via a `PRAGMA user_version` migration gate.
 
+### Payroll (Irish PAYE Modernisation)
+Monthly payroll for employees and directors, driven by RPNs.
+
+- **Employees** — manage staff and directors (PRSI class, proprietary-director
+  flag, default monthly gross, employee pension %).
+- **RPN import** — upload the Revenue Payroll Notification (RPN) JSON from ROS.
+  cashish matches each RPN to an employee by PPSN / employment ID and reads the
+  tax instruction (credits, standard-rate cut-off, USC bands, PRSI class, basis).
+  The parser is tolerant of envelope/casing variations in the ROS export.
+- **Pay runs** — one per month. A payslip is created for every active employee;
+  PAYE (cumulative or week-1), USC (banded) and PRSI (by class) are computed from
+  the RPN. This is the **"lighter calc"**: figures are suggested from the RPN and
+  are **fully editable** before you finalise. Printable payslips included.
+- **PSR export** — download a PAYE Modernisation **Payroll Submission Request
+  (PSR)** JSON per run, structured to Revenue's data-items spec.
+
+> Payroll is a working aid, not tax advice. PRSI uses default class rates —
+> verify against the current PRSI Employer Guide each year. Cumulative PAYE needs
+> prior-period pay recorded (or carried on the RPN) to be correct mid-year.
+> **Always validate the PSR in ROS before filing live.** Set your Employer
+> Registration Number in Settings first.
+
 ## Roadmap
 
-Payroll (employees, RPN import, payroll JSON export for ROS), then packaging the
-app for desktop ("electronifying").
+Package the app for desktop ("electronifying").

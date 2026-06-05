@@ -36,6 +36,18 @@ import {
   applyRulesToUncategorized,
   type RuleInput,
 } from "@/lib/rules";
+import {
+  saveEmployee,
+  setEmployeeStatus,
+  createPayRun,
+  updatePayslip,
+  recomputePayslip,
+  setPayRunStatus,
+  deletePayRun,
+  type EmployeeInput,
+} from "@/lib/payroll";
+import { importRpnJson } from "@/lib/rpn-import";
+import type { Payslip } from "@/db/schema";
 
 const { categories, customers, products, settings, transactions } = schema;
 
@@ -322,6 +334,72 @@ export async function applyRulesAction() {
   revalidatePath("/rules");
   revalidatePath("/");
   return result;
+}
+
+// ---- Payroll --------------------------------------------------------------
+
+export async function saveEmployeeAction(input: EmployeeInput) {
+  boot();
+  const id = saveEmployee(input);
+  revalidatePath("/payroll/employees");
+  revalidatePath("/payroll");
+  return id;
+}
+
+export async function setEmployeeStatusAction(
+  id: string,
+  status: "active" | "leaver",
+  dateOfLeaving?: string | null,
+) {
+  boot();
+  setEmployeeStatus(id, status, dateOfLeaving);
+  revalidatePath("/payroll/employees");
+}
+
+export async function importRpnAction(formData: FormData) {
+  boot();
+  const file = formData.get("file") as File | null;
+  const taxYear = Number(formData.get("taxYear")) || new Date().getFullYear();
+  if (!file) return { parsed: 0, imported: 0, matched: 0, unmatched: 0, errors: ["No file provided."] };
+  const text = await file.text();
+  const summary = importRpnJson(text, taxYear);
+  revalidatePath("/payroll/rpns");
+  revalidatePath("/payroll");
+  return summary;
+}
+
+export async function createPayRunAction(taxYear: number, periodNo: number, payDate: string) {
+  boot();
+  const id = createPayRun(taxYear, periodNo, payDate);
+  revalidatePath("/payroll");
+  revalidatePath("/payroll/runs");
+  return id;
+}
+
+export async function updatePayslipAction(id: string, patch: Partial<Payslip>) {
+  boot();
+  updatePayslip(id, patch);
+  revalidatePath("/payroll");
+}
+
+export async function recomputePayslipAction(id: string) {
+  boot();
+  recomputePayslip(id);
+  revalidatePath("/payroll");
+}
+
+export async function setPayRunStatusAction(id: string, status: "draft" | "finalised") {
+  boot();
+  setPayRunStatus(id, status);
+  revalidatePath("/payroll");
+  revalidatePath("/payroll/runs");
+}
+
+export async function deletePayRunAction(id: string) {
+  boot();
+  deletePayRun(id);
+  revalidatePath("/payroll");
+  revalidatePath("/payroll/runs");
 }
 
 // ---- Settings -------------------------------------------------------------

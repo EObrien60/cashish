@@ -206,13 +206,133 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS rule_order_idx ON category_rules (sort_order);
+
+CREATE TABLE IF NOT EXISTS employees (
+  id TEXT PRIMARY KEY,
+  first_name TEXT NOT NULL DEFAULT '',
+  family_name TEXT NOT NULL DEFAULT '',
+  ppsn TEXT DEFAULT '',
+  employer_reference TEXT DEFAULT '',
+  employment_id TEXT NOT NULL DEFAULT '1',
+  dob TEXT,
+  address_line1 TEXT DEFAULT '',
+  address_line2 TEXT DEFAULT '',
+  city TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  start_date TEXT,
+  date_of_leaving TEXT,
+  director TEXT DEFAULT '',
+  pay_frequency TEXT NOT NULL DEFAULT 'Monthly',
+  standard_gross REAL NOT NULL DEFAULT 0,
+  pension_employee_pct REAL NOT NULL DEFAULT 0,
+  prsi_class TEXT DEFAULT 'A',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS emp_ppsn_idx ON employees (ppsn);
+
+CREATE TABLE IF NOT EXISTS rpns (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT,
+  tax_year INTEGER NOT NULL,
+  rpn_number TEXT NOT NULL DEFAULT '',
+  rpn_issue_date TEXT,
+  first_name TEXT DEFAULT '',
+  family_name TEXT DEFAULT '',
+  ppsn TEXT DEFAULT '',
+  employment_id TEXT DEFAULT '',
+  employer_reference TEXT DEFAULT '',
+  income_tax_basis TEXT DEFAULT 'Cumulative',
+  exclusion_order INTEGER NOT NULL DEFAULT 0,
+  effective_date TEXT,
+  end_date TEXT,
+  pay_for_income_tax_to_date REAL DEFAULT 0,
+  income_tax_deducted_to_date REAL DEFAULT 0,
+  yearly_tax_credit REAL DEFAULT 0,
+  tax_rate1_pct REAL DEFAULT 0.2,
+  yearly_rate1_cutoff REAL DEFAULT 0,
+  tax_rate2_pct REAL DEFAULT 0.4,
+  prsi_exempt INTEGER NOT NULL DEFAULT 0,
+  prsi_class TEXT DEFAULT '',
+  usc_status TEXT DEFAULT 'Ordinary',
+  usc_bands TEXT DEFAULT '[]',
+  pay_for_usc_to_date REAL DEFAULT 0,
+  usc_deducted_to_date REAL DEFAULT 0,
+  lpt_to_deduct REAL DEFAULT 0,
+  employment_cessation_date TEXT,
+  state_pension_contributory INTEGER NOT NULL DEFAULT 0,
+  raw_json TEXT DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS rpn_emp_idx ON rpns (employee_id);
+CREATE INDEX IF NOT EXISTS rpn_year_idx ON rpns (tax_year);
+
+CREATE TABLE IF NOT EXISTS pay_runs (
+  id TEXT PRIMARY KEY,
+  tax_year INTEGER NOT NULL,
+  period_no INTEGER NOT NULL,
+  pay_date TEXT NOT NULL,
+  frequency TEXT NOT NULL DEFAULT 'Monthly',
+  payroll_run_reference TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+  id TEXT PRIMARY KEY,
+  pay_run_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  rpn_number TEXT DEFAULT '',
+  income_tax_basis TEXT DEFAULT 'Cumulative',
+  exclusion_order INTEGER NOT NULL DEFAULT 0,
+  tax_credits_this_period REAL DEFAULT 0,
+  standard_rate_cutoff REAL DEFAULT 0,
+  gross_pay REAL NOT NULL DEFAULT 0,
+  pension_employee REAL NOT NULL DEFAULT 0,
+  pension_employer REAL NOT NULL DEFAULT 0,
+  pay_for_income_tax REAL NOT NULL DEFAULT 0,
+  income_tax_paid REAL NOT NULL DEFAULT 0,
+  pay_for_employee_prsi REAL NOT NULL DEFAULT 0,
+  pay_for_employer_prsi REAL NOT NULL DEFAULT 0,
+  employee_prsi REAL NOT NULL DEFAULT 0,
+  employer_prsi REAL NOT NULL DEFAULT 0,
+  prsi_class TEXT DEFAULT 'A',
+  insurable_weeks INTEGER NOT NULL DEFAULT 4,
+  prsi_exempt INTEGER NOT NULL DEFAULT 0,
+  pay_for_usc REAL NOT NULL DEFAULT 0,
+  usc_status TEXT DEFAULT 'Ordinary',
+  usc_paid REAL NOT NULL DEFAULT 0,
+  lpt_deducted REAL NOT NULL DEFAULT 0,
+  other_deductions REAL NOT NULL DEFAULT 0,
+  other_deductions_label TEXT DEFAULT '',
+  net_pay REAL NOT NULL DEFAULT 0,
+  notes TEXT DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS slip_run_idx ON payslips (pay_run_id);
+CREATE INDEX IF NOT EXISTS slip_emp_idx ON payslips (employee_id);
 `;
+
+// Column additions to existing tables. SQLite has no "ADD COLUMN IF NOT EXISTS",
+// so each is attempted individually and a duplicate-column error is ignored —
+// makes re-running harmless regardless of the version gate.
+const COLUMN_ADDS = [
+  "ALTER TABLE settings ADD COLUMN employer_reg_number TEXT DEFAULT ''",
+];
 
 // Bump when DDL changes so existing databases re-run applySchema (all
 // statements are IF NOT EXISTS, so re-running is safe and only adds what's
 // missing). Gating on user_version avoids re-running DDL on every connection.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export function applySchema(sqlite: DatabaseType.Database) {
   sqlite.exec(DDL);
+  for (const stmt of COLUMN_ADDS) {
+    try {
+      sqlite.exec(stmt);
+    } catch (e) {
+      // Ignore "duplicate column name"; rethrow anything else.
+      if (!String(e).includes("duplicate column")) throw e;
+    }
+  }
 }

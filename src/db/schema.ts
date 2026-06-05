@@ -35,6 +35,7 @@ export const settings = sqliteTable("settings", {
   invoiceFooter: text("invoice_footer").default("Thank you for your business."),
   vatBasis: text("vat_basis").notNull().default("cash"), // 'cash' | 'invoice'
   logoDataUrl: text("logo_data_url").default(""),
+  employerRegNumber: text("employer_reg_number").default(""), // Employer PAYE/PRSI reg no
 });
 
 export const vatRates = sqliteTable("vat_rates", {
@@ -266,6 +267,135 @@ export const categoryRules = sqliteTable(
   }),
 );
 
+// --- Payroll (Irish PAYE Modernisation) ------------------------------------
+// "Lighter calc" model: deductions are computed from the imported RPN figures
+// (credits, SRCOP, tax rates, USC bands, PRSI class) and are fully overridable
+// per payslip. Field names mirror Revenue's PSR/RPN data-items spec.
+
+export const employees = sqliteTable(
+  "employees",
+  {
+    id: text("id").primaryKey(),
+    firstName: text("first_name").notNull().default(""),
+    familyName: text("family_name").notNull().default(""),
+    ppsn: text("ppsn").default(""),
+    employerReference: text("employer_reference").default(""), // internal staff id
+    employmentId: text("employment_id").notNull().default("1"), // PAYE Mod Employment ID
+    dob: text("dob"),
+    addressLine1: text("address_line1").default(""),
+    addressLine2: text("address_line2").default(""),
+    city: text("city").default(""),
+    email: text("email").default(""),
+    startDate: text("start_date"),
+    dateOfLeaving: text("date_of_leaving"),
+    director: text("director").default(""), // ''|'proprietary'|'non-proprietary'
+    payFrequency: text("pay_frequency").notNull().default("Monthly"),
+    standardGross: real("standard_gross").notNull().default(0), // default monthly gross
+    pensionEmployeePct: real("pension_employee_pct").notNull().default(0),
+    prsiClass: text("prsi_class").default("A"), // fallback if no RPN
+    status: text("status").notNull().default("active"), // active|leaver
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    ppsnIdx: index("emp_ppsn_idx").on(t.ppsn),
+  }),
+);
+
+export const rpns = sqliteTable(
+  "rpns",
+  {
+    id: text("id").primaryKey(),
+    employeeId: text("employee_id"), // matched employee (nullable until linked)
+    taxYear: integer("tax_year").notNull(),
+    rpnNumber: text("rpn_number").notNull().default(""),
+    rpnIssueDate: text("rpn_issue_date"),
+    // identity from the RPN
+    firstName: text("first_name").default(""),
+    familyName: text("family_name").default(""),
+    ppsn: text("ppsn").default(""),
+    employmentId: text("employment_id").default(""),
+    employerReference: text("employer_reference").default(""),
+    // instruction
+    incomeTaxBasis: text("income_tax_basis").default("Cumulative"), // Cumulative|Week 1|Emergency
+    exclusionOrder: integer("exclusion_order", { mode: "boolean" }).notNull().default(false),
+    effectiveDate: text("effective_date"),
+    endDate: text("end_date"),
+    payForIncomeTaxToDate: real("pay_for_income_tax_to_date").default(0),
+    incomeTaxDeductedToDate: real("income_tax_deducted_to_date").default(0),
+    yearlyTaxCredit: real("yearly_tax_credit").default(0),
+    taxRate1Pct: real("tax_rate1_pct").default(0.2),
+    yearlyRate1CutOff: real("yearly_rate1_cutoff").default(0), // SRCOP
+    taxRate2Pct: real("tax_rate2_pct").default(0.4),
+    prsiExempt: integer("prsi_exempt", { mode: "boolean" }).notNull().default(false),
+    prsiClass: text("prsi_class").default(""),
+    uscStatus: text("usc_status").default("Ordinary"), // Ordinary|Exempt
+    uscBands: text("usc_bands").default("[]"), // JSON [{rate, yearlyCutOff}]
+    payForUscToDate: real("pay_for_usc_to_date").default(0),
+    uscDeductedToDate: real("usc_deducted_to_date").default(0),
+    lptToDeduct: real("lpt_to_deduct").default(0),
+    employmentCessationDate: text("employment_cessation_date"),
+    statePensionContributory: integer("state_pension_contributory", { mode: "boolean" }).notNull().default(false),
+    rawJson: text("raw_json").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    empIdx: index("rpn_emp_idx").on(t.employeeId),
+    yearIdx: index("rpn_year_idx").on(t.taxYear),
+  }),
+);
+
+export const payRuns = sqliteTable("pay_runs", {
+  id: text("id").primaryKey(),
+  taxYear: integer("tax_year").notNull(),
+  periodNo: integer("period_no").notNull(), // 1-12 for monthly
+  payDate: text("pay_date").notNull(),
+  frequency: text("frequency").notNull().default("Monthly"),
+  payrollRunReference: text("payroll_run_reference").notNull(),
+  status: text("status").notNull().default("draft"), // draft|finalised
+  createdAt: text("created_at").notNull().default(now),
+});
+
+export const payslips = sqliteTable(
+  "payslips",
+  {
+    id: text("id").primaryKey(),
+    payRunId: text("pay_run_id").notNull(),
+    employeeId: text("employee_id").notNull(),
+    // RPN snapshot used for this slip
+    rpnNumber: text("rpn_number").default(""),
+    incomeTaxBasis: text("income_tax_basis").default("Cumulative"),
+    exclusionOrder: integer("exclusion_order", { mode: "boolean" }).notNull().default(false),
+    taxCreditsThisPeriod: real("tax_credits_this_period").default(0),
+    standardRateCutOff: real("standard_rate_cutoff").default(0),
+    // pay + statutory deductions (all overridable)
+    grossPay: real("gross_pay").notNull().default(0),
+    pensionEmployee: real("pension_employee").notNull().default(0),
+    pensionEmployer: real("pension_employer").notNull().default(0),
+    payForIncomeTax: real("pay_for_income_tax").notNull().default(0),
+    incomeTaxPaid: real("income_tax_paid").notNull().default(0),
+    payForEmployeePrsi: real("pay_for_employee_prsi").notNull().default(0),
+    payForEmployerPrsi: real("pay_for_employer_prsi").notNull().default(0),
+    employeePrsi: real("employee_prsi").notNull().default(0),
+    employerPrsi: real("employer_prsi").notNull().default(0),
+    prsiClass: text("prsi_class").default("A"),
+    insurableWeeks: integer("insurable_weeks").notNull().default(4),
+    prsiExempt: integer("prsi_exempt", { mode: "boolean" }).notNull().default(false),
+    payForUsc: real("pay_for_usc").notNull().default(0),
+    uscStatus: text("usc_status").default("Ordinary"),
+    uscPaid: real("usc_paid").notNull().default(0),
+    lptDeducted: real("lpt_deducted").notNull().default(0),
+    otherDeductions: real("other_deductions").notNull().default(0),
+    otherDeductionsLabel: text("other_deductions_label").default(""),
+    netPay: real("net_pay").notNull().default(0),
+    notes: text("notes").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => ({
+    runIdx: index("slip_run_idx").on(t.payRunId),
+    empIdx: index("slip_emp_idx").on(t.employeeId),
+  }),
+);
+
 export type Transaction = typeof transactions.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type VatRate = typeof vatRates.$inferSelect;
@@ -279,3 +409,7 @@ export type RecurringInvoice = typeof recurringInvoices.$inferSelect;
 export type RecurringInvoiceLine = typeof recurringInvoiceLines.$inferSelect;
 export type Receipt = typeof receipts.$inferSelect;
 export type CategoryRule = typeof categoryRules.$inferSelect;
+export type Employee = typeof employees.$inferSelect;
+export type Rpn = typeof rpns.$inferSelect;
+export type PayRun = typeof payRuns.$inferSelect;
+export type Payslip = typeof payslips.$inferSelect;

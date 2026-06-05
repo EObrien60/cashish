@@ -85,6 +85,7 @@ const STATUS_STYLES: Record<string, string> = {
   paid: "bg-brand-wash text-brand-dark",
   void: "bg-black/5 text-ink-faint line-through",
   overdue: "bg-money-out/10 text-money-out",
+  finalised: "bg-brand-wash text-brand-dark",
 };
 
 export function StatusBadge({ status }: { status: string }) {

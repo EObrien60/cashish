@@ -13,6 +13,7 @@ import {
   IconSettings,
   IconCoins,
   IconRules,
+  IconPayroll,
 } from "./icons";
 
 const NAV = [
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/invoices", label: "Invoices", icon: IconInvoice },
   { href: "/customers", label: "Customers", icon: IconUsers },
   { href: "/products", label: "Products", icon: IconBox },
+  { href: "/payroll", label: "Payroll", icon: IconPayroll },
   { href: "/reports", label: "Reports", icon: IconReport },
   { href: "/vat", label: "VAT return", icon: IconVat },
   { href: "/settings", label: "Settings", icon: IconSettings },
