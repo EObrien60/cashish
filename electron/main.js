@@ -4,7 +4,7 @@
 // it's running on the desktop and applies the desktop skin — the hosted web
 // build is byte-for-byte the same and never sees that UA.
 
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, nativeTheme } = require("electron");
 const path = require("path");
 const http = require("http");
 
@@ -93,6 +93,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Pin to a light appearance: the content surfaces are a light design, and a
+  // light vibrancy keeps the glass sidebar/toolbar legible regardless of the
+  // user's system theme (otherwise dark-mode vibrancy + dark text = invisible).
+  nativeTheme.themeSource = "light";
   createWindow();
 
   // Dev fast-path: load an already-running `next dev` server instead of
