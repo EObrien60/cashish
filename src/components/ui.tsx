@@ -20,8 +20,8 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-      <div>
+    <div className="page-header flex flex-wrap items-end justify-between gap-4 mb-6">
+      <div className="page-header-titles">
         <h1 className="text-2xl font-bold tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="text-sm text-ink-faint mt-1">{subtitle}</p>}
       </div>

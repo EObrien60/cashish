@@ -1,95 +1,329 @@
 /* ===========================================================================
-   Desktop skin — applied ONLY when the app runs inside the cashish macOS
-   shell (the root layout adds `.desktop` to <html> when it sees the desktop
-   User-Agent). Every rule is scoped under `.desktop`, so the hosted web build
-   is completely unaffected. Goal: a sleek, native-feeling macOS surface —
-   frosted vibrancy sidebar, hidden-inset traffic lights, refined density.
+   Desktop skin — macOS-native, applied ONLY inside the cashish desktop shell
+   (the root layout adds `.desktop` to <html> when it detects the shell's
+   User-Agent). Every rule is scoped under `.desktop`; the hosted web build
+   never matches and is byte-for-byte unaffected.
+
+   Design language: modern (Sonoma-era) first-party Mac app —
+   • the window is vibrancy; the sidebar is a translucent source list that
+     floats directly on it (sections + solid-accent selection);
+   • the content is a rounded panel inset from the window edges, casting a
+     soft shadow on the vibrancy;
+   • a unified, draggable toolbar caps the panel;
+   • SF system font, dense controls, hairline separators, macOS segmented
+     controls. Brand green is the accent.
    =========================================================================== */
 
-/* Let the native window vibrancy show through. */
+.desktop {
+  --mac-text: #1c1c1e;
+  --mac-text-soft: #3f3f44;
+  --mac-text-faint: #86868b;
+  --mac-hairline: rgba(0, 0, 0, 0.08);
+  --mac-hairline-strong: rgba(0, 0, 0, 0.13);
+  --mac-fill: rgba(118, 118, 128, 0.12);
+  --mac-panel: #fbfaf7;
+  --mac-toolbar: rgba(251, 250, 247, 0.8);
+  --mac-card: #ffffff;
+  --brand: #0f7b5f;
+  --brand-dark: #0a5c47;
+  font-size: 13px;
+  letter-spacing: -0.003em;
+  color: var(--mac-text);
+}
+
+/* The window background is the OS vibrancy material — keep everything that
+   should show it transparent. */
 .desktop,
 .desktop body {
   background: transparent !important;
 }
 
-/* The content surface sits on a solid panel over the vibrancy. */
-.desktop main {
-  background: #f6f4ee;
-}
-
-/* Draggable title region across the top of the content area (the page header
-   has enough top padding that this never sits over interactive controls). */
-.desktop .app-drag-strip {
-  position: fixed;
-  top: 0;
-  left: 15rem; /* clear the sidebar */
-  right: 0;
-  height: 30px;
-  z-index: 30;
-  -webkit-app-region: drag;
-}
-
-/* --- Sidebar: frosted material + traffic-light clearance ------------------ */
+/* ------------------------------------------------------ sidebar (source list) */
 .desktop aside {
-  background: rgba(247, 245, 239, 0.6) !important;
-  -webkit-backdrop-filter: saturate(180%) blur(22px);
-  backdrop-filter: saturate(180%) blur(22px);
-  border-right: 1px solid rgba(16, 34, 27, 0.07);
+  width: 220px;
+  background: transparent !important; /* floats on the window vibrancy */
+  border-right: none !important;
   -webkit-app-region: drag;
 }
-/* Push the brand below the inset traffic lights. */
-.desktop .sidebar-head {
-  padding-top: 22px;
-  height: auto;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(16, 34, 27, 0.06);
-}
-/* Anything interactive in the (draggable) sidebar must opt out of dragging. */
 .desktop aside a,
-.desktop aside button,
-.desktop aside input,
-.desktop aside select {
+.desktop aside button {
   -webkit-app-region: no-drag;
 }
 
-/* Nav items: tighter, more native rows with a crisper active state. */
-.desktop aside nav a {
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
+/* Brand mark sits clear below the inset traffic lights. */
+.desktop .sidebar-head {
+  height: auto !important;
+  padding: 40px 16px 12px !important;
+  border-bottom: none !important;
+}
+.desktop .sidebar-head .grid {
+  height: 28px;
+  width: 28px;
   border-radius: 7px;
 }
+.desktop .sidebar-head .grid svg {
+  height: 16px;
+  width: 16px;
+}
+.desktop .sidebar-head .text-lg {
+  font-size: 15px;
+}
 
-/* --- Surfaces & controls: a touch tighter and crisper -------------------- */
-.desktop .card {
-  border-radius: 11px;
+/* Section labels (hidden on web; revealed here). */
+.desktop .nav-section {
+  display: block;
+  padding: 13px 10px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--mac-text-faint);
+}
+.desktop .nav-group:first-child .nav-section {
+  padding-top: 2px;
+}
+
+.desktop aside nav {
+  padding: 4px 10px 10px;
+}
+.desktop aside nav a {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--mac-text-soft);
+  gap: 9px;
+}
+.desktop aside nav a svg {
+  height: 16px;
+  width: 16px;
+  opacity: 0.65;
+}
+.desktop aside nav a:hover {
+  background: rgba(0, 0, 0, 0.055);
+}
+/* Focused selection — the signature solid-accent macOS sidebar row. */
+.desktop aside nav a.bg-brand-wash {
+  background: linear-gradient(180deg, #1aa37c, #0f7b5f) !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(10, 92, 71, 0.28);
+}
+.desktop aside nav a.bg-brand-wash svg {
+  color: #fff;
+  opacity: 1;
+}
+.desktop aside > div:last-child {
+  border-top: none !important;
+  font-size: 11px;
+  color: var(--mac-text-faint);
+  padding: 10px 16px 14px;
+}
+
+/* ----------------------------------------------- content panel (inset, floating) */
+.desktop main {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: 228px; /* sidebar 220 + 8px vibrancy gutter */
+  padding-left: 0 !important;
+  min-height: 0 !important;
+  background: var(--mac-panel);
+  border-radius: 12px;
+  overflow: hidden;
   box-shadow:
-    0 1px 1px rgba(16, 34, 27, 0.03),
-    0 6px 20px rgba(16, 34, 27, 0.05);
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 12px 34px rgba(0, 0, 0, 0.16);
 }
-.desktop .btn {
-  border-radius: 8px;
-}
-.desktop .input {
-  border-radius: 8px;
+/* The wrapper becomes the scroll container inside the panel. */
+.desktop main > div {
+  height: 100%;
+  max-width: none !important;
+  overflow-y: auto;
+  padding: 0 22px 28px !important;
 }
 
-/* Slimmer, lower-contrast scrollbars to match the OS. */
+/* ----------------------------------------------------------- unified toolbar */
+.desktop .page-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -22px 20px;
+  padding: 10px 22px;
+  min-height: 50px;
+  align-items: center;
+  background: var(--mac-toolbar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--mac-hairline);
+  -webkit-app-region: drag;
+}
+.desktop .page-header a,
+.desktop .page-header button,
+.desktop .page-header input,
+.desktop .page-header select {
+  -webkit-app-region: no-drag;
+}
+.desktop .page-header h1 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.desktop .page-header .page-header-titles p {
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+/* Custom-header pages (invoice / pay run): drag their top row, add breathing room. */
+.desktop main > div > .no-print:first-child {
+  padding-top: 12px;
+  -webkit-app-region: drag;
+}
+.desktop main > div > .no-print:first-child a,
+.desktop main > div > .no-print:first-child button {
+  -webkit-app-region: no-drag;
+}
+
+/* ------------------------------------------------------------------- cards */
+.desktop .card {
+  background: var(--mac-card);
+  border: 0.5px solid var(--mac-hairline-strong);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.03),
+    0 3px 10px rgba(0, 0, 0, 0.04);
+}
+.desktop .card .text-2xl {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+/* --------------------------------------------------------- segmented control */
+.desktop .seg {
+  background: var(--mac-fill);
+  border: none !important;
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.desktop .seg a,
+.desktop .seg button {
+  border-radius: 6px;
+  padding: 3px 11px !important;
+  font-weight: 500;
+  color: var(--mac-text-soft);
+  transition: background 0.12s ease;
+}
+.desktop .seg a:hover,
+.desktop .seg button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.desktop .seg a.bg-brand,
+.desktop .seg button.bg-brand {
+  background: #fff !important;
+  color: var(--mac-text) !important;
+  font-weight: 600;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.13),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+
+/* ----------------------------------------------------------------- buttons */
+.desktop .btn {
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 12px;
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.desktop .btn-primary {
+  background: linear-gradient(180deg, #1aa37c, #0f7b5f);
+  box-shadow:
+    0 1px 2px rgba(10, 92, 71, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.desktop .btn-primary:hover {
+  background: linear-gradient(180deg, #169070, #0c6c53);
+}
+.desktop .btn-outline {
+  background: #fff;
+  border: 0.5px solid var(--mac-hairline-strong);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.06);
+  color: var(--mac-text);
+}
+.desktop .btn-outline:hover {
+  background: #f7f5f0;
+}
+.desktop .btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ------------------------------------------------------------------ inputs */
+.desktop .input {
+  border-radius: 6px;
+  border: 0.5px solid var(--mac-hairline-strong);
+  padding: 5px 9px;
+  font-size: 13px;
+  background: #fff;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+.desktop .input:focus {
+  border-color: #1aa37c;
+  box-shadow: 0 0 0 3px rgba(26, 163, 124, 0.18);
+}
+.desktop .label {
+  font-size: 10.5px;
+}
+
+/* ------------------------------------------------------------------ tables */
+.desktop .th {
+  font-size: 10.5px;
+  padding: 7px 14px;
+  color: var(--mac-text-faint);
+}
+.desktop .td {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+.desktop .divide-line > * + * {
+  border-color: var(--mac-hairline);
+}
+
+/* ------------------------------------------------------------------ badges */
+.desktop .badge {
+  font-size: 11px;
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+
+/* -------------------------------------------------------------- modal sheet */
+.desktop .fixed.inset-0 > .relative {
+  border-radius: 12px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.3),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+
+/* -------------------------------------------------------------- scrollbars */
 .desktop ::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 .desktop ::-webkit-scrollbar-thumb {
-  background: rgba(16, 34, 27, 0.18);
+  background: rgba(0, 0, 0, 0.18);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 999px;
 }
 .desktop ::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 34, 27, 0.3);
+  background: rgba(0, 0, 0, 0.3);
   background-clip: padding-box;
 }
 
-/* Native text selection + no rubber-band overscroll feel. */
+/* ---------------------------------------------------------------- cursors */
 .desktop * {
   cursor: default;
 }

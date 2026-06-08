@@ -219,7 +219,7 @@ export function TransactionsView({
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="inline-flex rounded-lg border border-line bg-card p-1 text-sm">
+        <div className="seg inline-flex rounded-lg border border-line bg-card p-1 text-sm">
           {(["all", "in", "out"] as const).map((d) => (
             <button
               key={d}

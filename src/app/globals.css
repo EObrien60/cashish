@@ -8,6 +8,11 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Sidebar section labels are a desktop-only affordance (shown via .desktop). */
+.nav-section {
+  display: none;
+}
+
 html,
 body {
   height: 100%;

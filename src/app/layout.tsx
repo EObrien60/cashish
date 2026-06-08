@@ -23,7 +23,6 @@ export default async function RootLayout({
   return (
     <html lang="en" className={isDesktop ? "desktop" : ""}>
       <body>
-        {isDesktop && <div className="app-drag-strip" />}
         <Sidebar />
         <main className="pl-60 min-h-screen">
           <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>

@@ -9,7 +9,7 @@ export function PeriodTabs({
   basePath: string;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-line bg-card p-1 text-sm">
+    <div className="seg inline-flex rounded-lg border border-line bg-card p-1 text-sm">
       {periods().map((p) => (
         <Link
           key={p.key}
