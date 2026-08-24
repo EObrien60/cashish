@@ -23,3 +23,5 @@ account-statement*.csv
 # Electron build intermediates (the .icns + logo source are committed)
 build/icon-1024.png
 build/*.iconset
+cashish-scratch.db*
+cashish-summary.json

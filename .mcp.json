@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cashish": {
+      "command": "npx",
+      "args": ["tsx", "mcp/server.ts"],
+      "env": {
+        "CASHISH_MCP_WRITE": "false"
+      }
+    }
+  }
+}

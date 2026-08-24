@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "author": "cashish",
-  "description": "Lightweight EUR accounting — statements, invoicing, VAT, payroll.",
+  "description": "Lightweight EUR accounting \u2014 statements, invoicing, VAT, payroll.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -16,15 +16,20 @@
     "electron": "electron .",
     "electron:dev": "CASHISH_DEV_URL=http://localhost:3000 electron .",
     "app:pack": "electron-packager . cashish --platform=darwin --arch=arm64 --out=dist --overwrite --icon=build/icon.icns --app-bundle-id=io.triplebolt.cashish --app-category-type=public.app-category.finance --prune=true --ignore=\"^/dist($|/)\" --ignore=\"^/src($|/)\" --ignore=\"^/\\.next/cache\" --ignore=\"^/build/.*\\.(html|png)$\" --ignore=\"\\.db$\" --ignore=\"^/\\.git\"",
-    "app:dist": "npm rebuild better-sqlite3 && npm run build && electron-rebuild -f -w better-sqlite3 && npm run app:pack"
+    "app:dist": "npm rebuild better-sqlite3 && npm run build && electron-rebuild -f -w better-sqlite3 && npm run app:pack",
+    "mcp": "tsx mcp/server.ts",
+    "export:integration": "tsx scripts/export-integration.ts",
+    "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^11.8.1",
     "drizzle-orm": "^0.38.4",
     "next": "15.1.6",
     "papaparse": "^5.4.1",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electron/packager": "^18.4.4",
