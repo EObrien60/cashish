@@ -115,3 +115,32 @@ test("a disabled rule stops claiming transactions", () => {
   assert.equal(result.updated, 0);
   assert.equal(categoryOf(tx), "cat-software", "disabling a rule does not clear what it set");
 });
+
+test("a historic invoice keeps its own number and leaves the sequence alone", () => {
+  const { createInvoice, nextInvoiceNumber } = require("../src/lib/invoices") as typeof import("../src/lib/invoices");
+  const { createCustomer } = require("../src/lib/customers") as typeof import("../src/lib/customers");
+
+  const { customer } = createCustomer({ name: `Numbering Test ${uid()}` });
+  const before = nextInvoiceNumber();
+
+  // Copied in from another system: the number on the document the customer holds.
+  const historic = createInvoice({
+    customerId: customer.id,
+    number: "1010",
+    status: "sent",
+    issueDate: "2026-03-27",
+    lines: [{ description: "Contract work", quantity: 1, unitPrice: 5000, vatRateId: null, productId: null }],
+  });
+  assert.equal(historic?.number, "1010");
+  assert.equal(nextInvoiceNumber(), before, "importing history must not push the next number forward");
+
+  // A new invoice still takes the next in sequence.
+  const fresh = createInvoice({
+    customerId: customer.id,
+    status: "draft",
+    issueDate: "2026-08-24",
+    lines: [{ description: "New work", quantity: 1, unitPrice: 100, vatRateId: null, productId: null }],
+  });
+  assert.equal(fresh?.number, before);
+  assert.notEqual(nextInvoiceNumber(), before, "and that one does consume it");
+});

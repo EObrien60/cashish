@@ -15,6 +15,12 @@ export type LineInput = {
 
 export type InvoiceInput = {
   customerId: string;
+  /**
+   * The invoice's own number. Supply it when copying a historic invoice in from another
+   * system: the number on the document the customer already has is the number the books
+   * must show. Omitted for anything new, which takes the next in sequence.
+   */
+  number?: string;
   status?: string;
   issueDate: string;
   dueDate?: string | null;
@@ -66,7 +72,10 @@ export function nextInvoiceNumber(): string {
 
 export function createInvoice(input: InvoiceInput) {
   const id = uid();
-  const number = nextInvoiceNumber();
+  // A supplied number is used verbatim and leaves the sequence alone — importing history
+  // must not push the next new invoice's number forward.
+  const supplied = input.number?.trim();
+  const number = supplied || nextInvoiceNumber();
   const { computed, subtotal, vatTotal, total } = computeLines(input.lines);
 
   db.transaction((trx) => {
@@ -91,13 +100,15 @@ export function createInvoice(input: InvoiceInput) {
     for (const c of computed) {
       trx.insert(invoiceLines).values({ ...c, invoiceId: id }).run();
     }
-    // bump sequence
-    const s = trx.select().from(settings).where(eq(settings.id, 1)).get();
-    trx
-      .update(settings)
-      .set({ nextInvoiceSeq: (s?.nextInvoiceSeq ?? 1) + 1 })
-      .where(eq(settings.id, 1))
-      .run();
+    if (!supplied) {
+      // bump sequence
+      const s = trx.select().from(settings).where(eq(settings.id, 1)).get();
+      trx
+        .update(settings)
+        .set({ nextInvoiceSeq: (s?.nextInvoiceSeq ?? 1) + 1 })
+        .where(eq(settings.id, 1))
+        .run();
+    }
   });
 
   return getInvoice(id);

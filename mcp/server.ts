@@ -29,6 +29,7 @@ import {
 } from "../src/lib/customers";
 import {
   createInvoice,
+  deleteInvoice,
   getInvoice,
   listInvoices,
   nextInvoiceNumber,
@@ -578,6 +579,12 @@ server.registerTool(
     inputSchema: {
       customerId: z.string().optional(),
       customerName: z.string().optional().describe("Used if customerId is omitted"),
+      number: z
+        .string()
+        .optional()
+        .describe(
+          "The invoice's own number, for history copied from another system — the number on the document the customer already has. Omit for a new invoice to take the next in sequence.",
+        ),
       status: z.enum(["draft", "sent", "paid", "partial", "void"]).default("sent"),
       issueDate: z.string().describe("ISO date"),
       dueDate: z.string().nullable().optional(),
@@ -596,7 +603,7 @@ server.registerTool(
         .min(1),
     },
   },
-  async ({ customerId, customerName, status, issueDate, dueDate, notes, terms, lines }) => {
+  async ({ customerId, customerName, number, status, issueDate, dueDate, notes, terms, lines }) => {
     if (!WRITES_ENABLED) return writeGuard();
 
     let resolvedId = customerId;
@@ -608,6 +615,7 @@ server.registerTool(
 
     const invoice = createInvoice({
       customerId: resolvedId,
+      ...(number ? { number } : {}),
       status,
       issueDate,
       dueDate: dueDate ?? null,
@@ -664,6 +672,23 @@ server.registerTool(
       note: note ?? "",
     });
     return text({ ok: true, invoice });
+  },
+);
+
+server.registerTool(
+  "cashish_delete_invoice",
+  {
+    title: "Delete an invoice",
+    description:
+      "Removes an invoice with its lines and recorded payments. For a mistake — a duplicate, or an import that went in wrong. An invoice the customer has already been sent should be voided with cashish_set_invoice_status instead, so the number is not reused and the trail survives.",
+    inputSchema: { id: z.string().describe("Invoice id, or its number") },
+  },
+  async ({ id }) => {
+    if (!WRITES_ENABLED) return writeGuard();
+    const invoice = getInvoice(id) ?? listInvoices().find((i) => i.number === id);
+    if (!invoice) return fail(`No invoice ${id}`);
+    deleteInvoice(invoice.id);
+    return text({ ok: true, deleted: { id: invoice.id, number: invoice.number, total: invoice.total } });
   },
 );
 
