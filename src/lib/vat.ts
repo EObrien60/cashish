@@ -1,6 +1,7 @@
 import { db, schema } from "@/db/client";
 import { and, gte, lte, isNotNull, eq } from "drizzle-orm";
 import { round2 } from "./format";
+import { notExcluded } from "./transactions";
 
 const { payments, invoices, transactions, vatRates, categories } = schema;
 
@@ -67,6 +68,7 @@ function purchasesVat(from: string, to: string) {
         gte(transactions.bookedDate, from),
         lte(transactions.bookedDate, to),
         isNotNull(transactions.vatRateId),
+        notExcluded(),
       ),
     )
     .all();
@@ -135,6 +137,7 @@ export function computeVatReturn(from: string, to: string): VatReturn {
       and(
         gte(transactions.bookedDate, from),
         lte(transactions.bookedDate, to),
+        notExcluded(),
       ),
     )
     .all()
@@ -143,7 +146,7 @@ export function computeVatReturn(from: string, to: string): VatReturn {
   const unassignedExpenseCount = db
     .select({ amount: transactions.amount, cat: transactions.categoryId, vr: transactions.vatRateId })
     .from(transactions)
-    .where(and(gte(transactions.bookedDate, from), lte(transactions.bookedDate, to)))
+    .where(and(gte(transactions.bookedDate, from), lte(transactions.bookedDate, to), notExcluded()))
     .all()
     .filter((t) => t.amount < 0 && !t.cat && !t.vr).length;
 

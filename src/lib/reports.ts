@@ -1,6 +1,7 @@
 import { db, schema } from "@/db/client";
 import { and, gte, lte } from "drizzle-orm";
 import { round2 } from "./format";
+import { notExcluded } from "./transactions";
 
 const { transactions, categories, invoices } = schema;
 
@@ -28,7 +29,7 @@ function txInRange(from: string, to: string) {
   return db
     .select()
     .from(transactions)
-    .where(and(gte(transactions.bookedDate, from), lte(transactions.bookedDate, to)))
+    .where(and(gte(transactions.bookedDate, from), lte(transactions.bookedDate, to), notExcluded()))
     .all();
 }
 
@@ -135,6 +136,7 @@ export function dashboardStats(from: string, to: string): DashboardStats {
   const latest = db
     .select({ balance: transactions.balance, d: transactions.bookedDate })
     .from(transactions)
+    // Bank balance is the bank's own figure, so an excluded line still moved the money.
     .all()
     .filter((r) => r.balance !== null)
     .sort((a, b) => (b.d || "").localeCompare(a.d || ""))[0];

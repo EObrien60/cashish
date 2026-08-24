@@ -89,6 +89,11 @@ export const transactions = sqliteTable(
     reconciled: integer("reconciled", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Excluded from the books entirely: internal pot transfers, personal spend that
+    // landed on the wrong card, duplicate imports. Still stored, because deleting a
+    // bank line loses the audit trail — but counted nowhere.
+    excluded: integer("excluded", { mode: "boolean" }).notNull().default(false),
+    excludedReason: text("excluded_reason").default(""),
     // link to an invoice payment if this tx settles an invoice
     importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(now),

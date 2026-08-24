@@ -39,7 +39,7 @@ import { buildIntegrationSummary } from "../src/lib/integration";
 import { openInvoices, reconcileReport, suggestMatches, unmatchedInflows } from "../src/lib/reconcile";
 import { dashboardStats, monthlyCashflow, profitAndLoss } from "../src/lib/reports";
 import {
-  applyRulesToTransactions,
+  applyRulesToAll,
   applyRulesToUncategorized,
   firstMatch,
   listRules,
@@ -47,7 +47,13 @@ import {
   saveRule,
   deleteRule,
 } from "../src/lib/rules";
-import { bulkCategorize, listTransactions, updateTransaction } from "../src/lib/transactions";
+import {
+  bulkCategorize,
+  listTransactions,
+  setExcluded,
+  transactionCounts,
+  updateTransaction,
+} from "../src/lib/transactions";
 import { computeVatReturn } from "../src/lib/vat";
 import { countDue, generateDue, listRecurring, saveRecurring } from "../src/lib/recurring";
 
@@ -109,11 +115,15 @@ server.registerTool(
       search: z.string().optional(),
       direction: z.enum(["in", "out"]).optional(),
       uncategorized: z.boolean().optional(),
+      excluded: z
+        .enum(["hide", "only", "all"])
+        .optional()
+        .describe("hide (default) omits excluded transactions; only lists them; all shows both"),
       categoryId: z.string().optional(),
       limit: z.number().int().positive().max(500).optional(),
     },
   },
-  async ({ from, to, search, direction, uncategorized, categoryId, limit }) => {
+  async ({ from, to, search, direction, uncategorized, categoryId, limit, excluded }) => {
     const rows = listTransactions({
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
@@ -121,6 +131,7 @@ server.registerTool(
       ...(direction ? { direction } : {}),
       ...(uncategorized ? { uncategorized } : {}),
       ...(categoryId ? { categoryId } : {}),
+      ...(excluded ? { excluded } : {}),
     });
     const categories = new Map(db.select().from(schema.categories).all().map((c) => [c.id, c.name]));
     return text({
@@ -436,7 +447,7 @@ server.registerTool(
     let applied = null;
     if (applyNow === "uncategorised") applied = applyRulesToUncategorized();
     if (applyNow === "all") {
-      applied = applyRulesToTransactions(listTransactions(), { onlyUncategorized: false });
+      applied = applyRulesToAll();
     }
 
     return text({ ok: true, rules: listRules().length, applied });
@@ -458,16 +469,12 @@ server.registerTool(
   {
     title: "Apply rules to transactions",
     description:
-      "Runs the enabled rules. By default only over uncategorised transactions, so manual categorisations survive; overwrite:true re-categorises everything.",
-    inputSchema: { overwrite: z.boolean().optional() },
+      "Re-applies the enabled rules across the whole ledger, including transactions that already have a category — so a corrected rule fixes the history it got wrong. A category no rule matches is left alone, and excluded transactions are skipped. Pass onlyUncategorised to leave existing categories untouched.",
+    inputSchema: { onlyUncategorised: z.boolean().optional() },
   },
-  async ({ overwrite }) => {
+  async ({ onlyUncategorised }) => {
     if (!WRITES_ENABLED) return writeGuard();
-    return text(
-      overwrite
-        ? applyRulesToTransactions(listTransactions(), { onlyUncategorized: false })
-        : applyRulesToUncategorized(),
-    );
+    return text(onlyUncategorised ? applyRulesToUncategorized() : applyRulesToAll());
   },
 );
 
@@ -505,6 +512,28 @@ server.registerTool(
       ...(reconciled !== undefined ? { reconciled } : {}),
     } as Parameters<typeof updateTransaction>[1]);
     return text({ ok: true, id });
+  },
+);
+
+server.registerTool(
+  "cashish_exclude_transactions",
+  {
+    title: "Take transactions out of the books, or put them back",
+    description:
+      "Excluding keeps the row — so a statement still reconciles line for line — but counts it nowhere: not in reports, not in VAT, not in reconciliation, and not in what Lunar is told. Use it for internal pot transfers, personal spend on the wrong card, and duplicate imports. Excluding also clears the category, since the transaction is out of the books. Reversible with excluded:false.",
+    inputSchema: {
+      transactionIds: z.array(z.string()).min(1),
+      excluded: z.boolean().default(true),
+      reason: z
+        .string()
+        .optional()
+        .describe("Why it is out of the books — worth recording, someone will ask"),
+    },
+  },
+  async ({ transactionIds, excluded, reason }) => {
+    if (!WRITES_ENABLED) return writeGuard();
+    const result = setExcluded(transactionIds, excluded, reason ?? "");
+    return text({ ...result, counts: transactionCounts() });
   },
 );
 

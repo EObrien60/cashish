@@ -25,3 +25,4 @@ build/icon-1024.png
 build/*.iconset
 cashish-scratch.db*
 cashish-summary.json
+cashish-test.db*

@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   vat_rate_id TEXT,
   note TEXT DEFAULT '',
   reconciled INTEGER NOT NULL DEFAULT 0,
+  excluded INTEGER NOT NULL DEFAULT 0,
+  excluded_reason TEXT DEFAULT '',
   import_batch TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
@@ -318,12 +320,17 @@ CREATE INDEX IF NOT EXISTS slip_emp_idx ON payslips (employee_id);
 // makes re-running harmless regardless of the version gate.
 const COLUMN_ADDS = [
   "ALTER TABLE settings ADD COLUMN employer_reg_number TEXT DEFAULT ''",
+  "ALTER TABLE transactions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE transactions ADD COLUMN excluded_reason TEXT DEFAULT ''",
+  // After the column exists, not in DDL above — that block runs first, and indexing a
+  // column an existing database has not been given yet throws.
+  "CREATE INDEX IF NOT EXISTS tx_excluded_idx ON transactions (excluded)",
 ];
 
 // Bump when DDL changes so existing databases re-run applySchema (all
 // statements are IF NOT EXISTS, so re-running is safe and only adds what's
 // missing). Gating on user_version avoids re-running DDL on every connection.
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function applySchema(sqlite: DatabaseType.Database) {
   sqlite.exec(DDL);

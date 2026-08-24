@@ -1,5 +1,5 @@
 import { db, schema } from "@/db/client";
-import { and, desc, eq, gte, inArray, lte, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, like, or, sql, type SQL } from "drizzle-orm";
 import { uid } from "./id";
 import type { ParsedRow } from "./import";
 import { applyRulesToTransactions } from "./rules";
@@ -76,6 +76,13 @@ export function importTransactions(
   };
 }
 
+/**
+ * Excluded transactions are counted nowhere: not in reports, not in VAT, not in
+ * reconciliation, not in what Lunar is told. Every query over transactions that feeds a
+ * number uses this, so the rule lives in one place rather than being remembered five times.
+ */
+export const notExcluded = () => eq(transactions.excluded, false);
+
 export type TxFilter = {
   from?: string;
   to?: string;
@@ -83,10 +90,20 @@ export type TxFilter = {
   categoryId?: string | "none";
   direction?: "in" | "out";
   uncategorized?: boolean;
+  /**
+   * Excluded transactions are hidden everywhere by default — that is the point of
+   * excluding them. "only" is the excluded tab; "all" is for reconciling against a
+   * statement, where every line has to be accounted for.
+   */
+  excluded?: "hide" | "only" | "all";
 };
 
 export function listTransactions(filter: TxFilter = {}) {
   const conds = [];
+  // Default is hide: a caller that says nothing must never be handed excluded rows.
+  const excluded = filter.excluded ?? "hide";
+  if (excluded === "hide") conds.push(eq(transactions.excluded, false));
+  if (excluded === "only") conds.push(eq(transactions.excluded, true));
   if (filter.from) conds.push(gte(transactions.bookedDate, filter.from));
   if (filter.to) conds.push(lte(transactions.bookedDate, filter.to));
   if (filter.direction === "in") conds.push(gte(transactions.amount, 0));
@@ -137,4 +154,44 @@ export function bulkCategorize(ids: string[], categoryId: string | null) {
     .where(inArray(transactions.id, ids))
     .run();
   return ids.length;
+}
+
+/**
+ * Takes transactions out of the books, or puts them back.
+ *
+ * Excluding is not deleting: the row stays, so a statement still reconciles line for line
+ * and the decision can be reversed. It simply stops being counted — reports, VAT,
+ * reconciliation and what Lunar is told all skip it.
+ *
+ * The reason is worth recording. "Why is this €11,880 not in the accounts?" is a question
+ * someone will ask, possibly an accountant, possibly you in a year.
+ */
+export function setExcluded(
+  ids: string[],
+  excluded: boolean,
+  reason = "",
+): { updated: number } {
+  if (ids.length === 0) return { updated: 0 };
+  db.update(transactions)
+    .set({
+      excluded,
+      // Clearing the flag clears the reason with it, rather than leaving a stale one behind.
+      excludedReason: excluded ? reason : "",
+      // An excluded transaction cannot also be categorised — it is out of the books.
+      ...(excluded ? { categoryId: null, vatRateId: null } : {}),
+    })
+    .where(inArray(transactions.id, ids))
+    .run();
+  return { updated: ids.length };
+}
+
+/** Counts for the tab labels, so the UI does not have to fetch rows to show a number. */
+export function transactionCounts(): { included: number; excluded: number; uncategorised: number } {
+  const count = (where: SQL | undefined) =>
+    db.select({ n: sql<number>`count(*)` }).from(transactions).where(where).get()?.n ?? 0;
+  return {
+    included: count(eq(transactions.excluded, false)),
+    excluded: count(eq(transactions.excluded, true)),
+    uncategorised: count(and(eq(transactions.excluded, false), sql`${transactions.categoryId} IS NULL`)),
+  };
 }

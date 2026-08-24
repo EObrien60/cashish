@@ -1,7 +1,8 @@
-import { desc, isNotNull, sql } from "drizzle-orm";
+import { and, desc, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { round2 } from "./format";
 import { listCustomers } from "./customers";
+import { notExcluded } from "./transactions";
 
 const { invoices, payments, transactions } = schema;
 
@@ -55,7 +56,7 @@ export function unmatchedInflows(options: { from?: string; to?: string; minAmoun
   return db
     .select()
     .from(transactions)
-    .where(sql`${transactions.amount} >= ${min}`)
+    .where(and(sql`${transactions.amount} >= ${min}`, notExcluded()))
     .orderBy(desc(transactions.bookedDate))
     .all()
     .filter((tx) => !linked.includes(tx.id))

@@ -8,7 +8,7 @@ import type { Transaction } from "@/db/schema";
 
 export type ParsedRow = Omit<
   Transaction,
-  "categoryId" | "vatRateId" | "note" | "reconciled" | "createdAt"
+  "categoryId" | "vatRateId" | "note" | "reconciled" | "createdAt" | "excluded" | "excludedReason"
 > & {
   categoryId: null;
   vatRateId: null;

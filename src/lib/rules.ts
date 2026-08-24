@@ -1,6 +1,7 @@
 import { db, schema } from "@/db/client";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { uid } from "./id";
+import { notExcluded } from "./transactions";
 import type { CategoryRule, Transaction } from "@/db/schema";
 
 const { categoryRules, transactions, categories } = schema;
@@ -103,7 +104,16 @@ export function firstMatch(rules: CategoryRule[], t: Transaction): CategoryRule 
   return null;
 }
 
-export type ApplyResult = { matched: number; updated: number };
+export type ApplyResult = {
+  matched: number;
+  updated: number;
+  /**
+   * How many already had a *different* category and were overwritten. Reported separately
+   * because that is the destructive half of applying rules, and the number a person wants
+   * to see before trusting it.
+   */
+  recategorised: number;
+};
 
 // Apply rules to a set of transactions. By default only touches uncategorised
 // ones (so manual categorisations are never overwritten).
@@ -112,18 +122,24 @@ export function applyRulesToTransactions(
   opts: { onlyUncategorized?: boolean } = { onlyUncategorized: true },
 ): ApplyResult {
   const rules = listRules().filter((r) => r.enabled);
-  if (rules.length === 0) return { matched: 0, updated: 0 };
+  if (rules.length === 0) return { matched: 0, updated: 0, recategorised: 0 };
 
   let matched = 0;
   let updated = 0;
+  let recategorised = 0;
   const applyCounts = new Map<string, number>();
 
   db.transaction((trx) => {
     for (const t of txs) {
       if (opts.onlyUncategorized && t.categoryId) continue;
+      // An excluded transaction is out of the books, so no rule gets to categorise it.
+      if (t.excluded) continue;
       const rule = firstMatch(rules, t);
       if (!rule) continue;
       matched++;
+      const before = t.categoryId ?? null;
+      const after = rule.categoryId ?? null;
+      if (before !== null && before !== after) recategorised++;
       trx
         .update(transactions)
         .set({
@@ -144,7 +160,7 @@ export function applyRulesToTransactions(
     }
   });
 
-  return { matched, updated };
+  return { matched, updated, recategorised };
 }
 
 // Sweep all currently-uncategorised transactions.
@@ -152,7 +168,21 @@ export function applyRulesToUncategorized(): ApplyResult {
   const txs = db
     .select()
     .from(transactions)
-    .where(isNull(transactions.categoryId))
+    .where(and(isNull(transactions.categoryId), notExcluded()))
     .all();
   return applyRulesToTransactions(txs, { onlyUncategorized: true });
+}
+
+/**
+ * Re-applies every enabled rule to every transaction, including ones that already have a
+ * category.
+ *
+ * This is what "apply rules" has to do to be useful: a rule you just corrected is worth
+ * nothing if it cannot reach the transactions it previously got wrong. Only rows a rule
+ * actually matches are touched — a category set by hand that no rule has an opinion about
+ * survives untouched, and excluded rows are skipped entirely.
+ */
+export function applyRulesToAll(): ApplyResult {
+  const txs = db.select().from(transactions).where(notExcluded()).all();
+  return applyRulesToTransactions(txs, { onlyUncategorized: false });
 }

@@ -1,7 +1,8 @@
-import { desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db/client";
 import { round2 } from "./format";
 import { listCustomers } from "./customers";
+import { notExcluded } from "./transactions";
 
 const { invoices, payments, recurringInvoices, transactions } = schema;
 
@@ -154,19 +155,20 @@ export function buildIntegrationSummary(asOf = today()): IntegrationSummary {
   const inflows = db
     .select()
     .from(transactions)
-    .where(sql`${transactions.amount} > 0`)
+    .where(and(sql`${transactions.amount} > 0`, notExcluded()))
     .all()
     .filter((tx) => !linkedTxIds.has(tx.id));
   const lastTx = db
     .select({ date: transactions.bookedDate })
     .from(transactions)
+    .where(notExcluded())
     .orderBy(desc(transactions.bookedDate))
     .limit(1)
     .get();
   const uncategorised = db
     .select({ n: sql<number>`count(*)` })
     .from(transactions)
-    .where(sql`${transactions.categoryId} IS NULL`)
+    .where(and(sql`${transactions.categoryId} IS NULL`, notExcluded()))
     .get();
 
   return {

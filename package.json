@@ -19,7 +19,9 @@
     "app:dist": "npm rebuild better-sqlite3 && npm run build && electron-rebuild -f -w better-sqlite3 && npm run app:pack",
     "mcp": "tsx mcp/server.ts",
     "export:integration": "tsx scripts/export-integration.ts",
-    "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts"
+    "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts",
+    "test": "DATABASE_URL=./cashish-test.db tsx --test tests/*.test.ts",
+    "pretest": "rm -f ./cashish-test.db ./cashish-test.db-journal"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

@@ -10,6 +10,7 @@ import {
   importTransactions,
   updateTransaction,
   bulkCategorize,
+  setExcluded,
   type ImportSummary,
 } from "@/lib/transactions";
 import {
@@ -33,7 +34,7 @@ import {
   saveRule,
   deleteRule,
   reorderRule,
-  applyRulesToUncategorized,
+  applyRulesToAll,
   type RuleInput,
 } from "@/lib/rules";
 import {
@@ -327,11 +328,36 @@ export async function reorderRuleAction(id: string, direction: "up" | "down") {
   revalidatePath("/rules");
 }
 
+/**
+ * Re-applies every enabled rule across the whole ledger, not only the uncategorised part.
+ *
+ * A rule you have just corrected is useless if applying it cannot reach the transactions
+ * it previously got wrong, which is the whole reason to edit a rule. Transactions no rule
+ * matches keep whatever category they have, so categorising something by hand that no
+ * rule covers is still safe.
+ */
 export async function applyRulesAction() {
   boot();
-  const result = applyRulesToUncategorized();
+  const result = applyRulesToAll();
   revalidatePath("/transactions");
   revalidatePath("/rules");
+  revalidatePath("/reports");
+  revalidatePath("/vat");
+  revalidatePath("/");
+  return result;
+}
+
+/**
+ * Takes transactions out of the books, or puts them back. The row stays either way, so a
+ * statement still reconciles line for line and the call can be reversed.
+ */
+export async function setExcludedAction(ids: string[], excluded: boolean, reason = "") {
+  boot();
+  const result = setExcluded(ids, excluded, reason);
+  revalidatePath("/transactions");
+  revalidatePath("/reports");
+  revalidatePath("/vat");
+  revalidatePath("/invoices");
   revalidatePath("/");
   return result;
 }

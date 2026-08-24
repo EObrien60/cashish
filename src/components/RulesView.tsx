@@ -119,7 +119,12 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
   function applyNow() {
     startTransition(async () => {
       const r = await applyRulesAction();
-      setApplied(`Applied rules — ${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised.`);
+      const changed = `${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised`;
+      setApplied(
+        r.recategorised > 0
+          ? `Re-applied rules — ${changed}, ${r.recategorised} of them recategorised.`
+          : `Re-applied rules — ${changed}.`,
+      );
       router.refresh();
       setTimeout(() => setApplied(null), 4000);
     });
@@ -129,9 +134,11 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-ink-faint">
-          Rules auto-categorise transactions on import and can be applied to
-          existing ones. They run top to bottom — the first match wins. Manual
-          categorisations are never overwritten.
+          Rules auto-categorise transactions on import and can be re-applied to
+          existing ones. They run top to bottom — the first match wins. Applying
+          them reaches transactions that already have a category, so correcting a
+          rule fixes the history it got wrong; a category no rule matches is left
+          alone, and excluded transactions are skipped.
         </p>
         <div className="flex gap-2">
           <button
