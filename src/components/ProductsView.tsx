@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product, VatRate, Category } from "@/db/schema";
 import { money, pct } from "@/lib/format";
@@ -9,13 +10,17 @@ import { Modal } from "@/components/Modal";
 import { IconPlus, IconEdit } from "@/components/icons";
 import { saveProduct, archiveProduct } from "@/app/actions";
 
+type Usage = { units: number; net: number; lines: number };
+
 type Props = {
   products: Product[];
   vatRates: VatRate[];
   categories: Category[];
+  /** Keyed by product id. Absent means it has never been invoiced. */
+  usage?: Record<string, Usage>;
 };
 
-export function ProductsView({ products, vatRates, categories }: Props) {
+export function ProductsView({ products, vatRates, categories, usage = {} }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -105,6 +110,8 @@ export function ProductsView({ products, vatRates, categories }: Props) {
                 <th className="th">SKU</th>
                 <th className="th text-right">Unit price (ex VAT)</th>
                 <th className="th text-right">VAT</th>
+                <th className="th text-right">Sold</th>
+                <th className="th text-right">Net invoiced</th>
                 <th className="th w-16"></th>
               </tr>
             </thead>
@@ -114,7 +121,12 @@ export function ProductsView({ products, vatRates, categories }: Props) {
                 return (
                   <tr key={p.id} className="hover:bg-paper/50">
                     <td className="td">
-                      <div className="font-medium">{p.name}</div>
+                      <Link
+                        href={`/products/${p.id}`}
+                        className="font-medium text-brand hover:underline"
+                      >
+                        {p.name}
+                      </Link>
                       {p.description && (
                         <div className="text-xs text-ink-faint">
                           {p.description}
@@ -128,6 +140,12 @@ export function ProductsView({ products, vatRates, categories }: Props) {
                     </td>
                     <td className="td text-right text-ink-soft">
                       {v ? (v.exempt ? "Exempt" : pct(v.rate)) : "—"}
+                    </td>
+                    <td className="td text-right tabular text-ink-soft">
+                      {usage[p.id]?.units ?? "—"}
+                    </td>
+                    <td className="td text-right tabular">
+                      {usage[p.id] ? money(usage[p.id].net) : "—"}
                     </td>
                     <td className="td text-right">
                       <button

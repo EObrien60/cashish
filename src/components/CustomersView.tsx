@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { money } from "@/lib/format";
 import type { Customer } from "@/db/schema";
 import { Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/Modal";
@@ -19,7 +21,16 @@ const EMPTY = {
   notes: "",
 };
 
-export function CustomersView({ customers }: { customers: Customer[] }) {
+type Totals = { invoiced: number; paid: number; outstanding: number; count: number };
+
+export function CustomersView({
+  customers,
+  totals = {},
+}: {
+  customers: Customer[];
+  /** Keyed by customer id. Absent means nothing invoiced yet. */
+  totals?: Record<string, Totals>;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -88,19 +99,37 @@ export function CustomersView({ customers }: { customers: Customer[] }) {
                 <th className="th">Email</th>
                 <th className="th">VAT number</th>
                 <th className="th">Location</th>
+                <th className="th text-right">Invoices</th>
+                <th className="th text-right">Invoiced</th>
+                <th className="th text-right">Outstanding</th>
                 <th className="th w-20"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {active.map((c) => (
                 <tr key={c.id} className="hover:bg-paper/50">
-                  <td className="td font-medium">{c.name}</td>
+                  <td className="td font-medium">
+                    <Link href={`/customers/${c.id}`} className="text-brand hover:underline">
+                      {c.name}
+                    </Link>
+                  </td>
                   <td className="td text-ink-soft">{c.email || "—"}</td>
                   <td className="td text-ink-soft tabular">
                     {c.vatNumber || "—"}
                   </td>
                   <td className="td text-ink-soft">
                     {[c.city, c.country].filter(Boolean).join(", ") || "—"}
+                  </td>
+                  <td className="td tabular text-right text-ink-soft">
+                    {totals[c.id]?.count ?? "—"}
+                  </td>
+                  <td className="td tabular text-right">
+                    {totals[c.id] ? money(totals[c.id].invoiced) : "—"}
+                  </td>
+                  <td className="td tabular text-right">
+                    {totals[c.id] && totals[c.id].outstanding > 0.005
+                      ? money(totals[c.id].outstanding)
+                      : "—"}
                   </td>
                   <td className="td text-right">
                     <button
