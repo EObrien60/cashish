@@ -16,10 +16,15 @@ import { SESSION_COOKIE } from "@/lib/session-cookie";
 // itself with an API key or an access token.
 // ---------------------------------------------------------------------------
 
+// Routes that authenticate themselves. Everything else under /api stays behind
+// the session gate — the receipt and payroll routes use withTenant and are meant
+// to be browser-only.
 const PUBLIC_PREFIXES = [
   "/login",
   "/accept-invite",
   "/api/mcp",
+  // Authenticates with an API key, so the session gate must not intercept it.
+  "/api/integration",
   "/.well-known/",
   "/oauth/register",
   "/oauth/token",
