@@ -49,6 +49,7 @@ import {
   type EmployeeInput,
 } from "@/lib/payroll";
 import { importRpnJson } from "@/lib/rpn-import";
+import { createPerson, setTransactionEmployee, setPersonStatus } from "@/lib/people";
 import type { Payslip } from "@/db/schema";
 
 const { categories, customers, products, settings, transactions } = schema;
@@ -527,5 +528,46 @@ export async function saveSettings(data: Partial<typeof settings.$inferInsert>) 
     await db.update(settings).set(rest).where(eq(settings.tenantId, tenantId()));
     revalidatePath("/settings");
     revalidatePath("/invoices");
+  });
+}
+
+// ---- People ----------------------------------------------------------------
+// Employees, and which bank payments went to them. Deliberately reachable
+// without an RPN import or a pay run — see src/lib/people.ts.
+
+export async function createPersonAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "").trim();
+  const grossRaw = String(formData.get("standardGross") ?? "").trim();
+  if (!name) return { error: "A name is required." };
+
+  return withCapability("books:write", async () => {
+    const { employee, created } = await createPerson({
+      name,
+      email,
+      startDate: startDate || null,
+      standardGross: grossRaw ? Number(grossRaw) : 0,
+    });
+    revalidatePath("/payroll/employees");
+    revalidatePath("/payroll");
+    revalidatePath("/transactions");
+    return { id: employee.id, created };
+  });
+}
+
+export async function setTxEmployeeAction(ids: string[], employeeId: string | null) {
+  return withCapability("books:write", async () => {
+    const result = await setTransactionEmployee(ids, employeeId);
+    revalidatePath("/transactions");
+    revalidatePath("/payroll/employees");
+    return result;
+  });
+}
+
+export async function setPersonStatusAction(id: string, status: "active" | "leaver") {
+  return withCapability("books:write", async () => {
+    await setPersonStatus(id, status);
+    revalidatePath("/payroll/employees");
   });
 }

@@ -17,6 +17,15 @@ export type RuleInput = {
   categoryId: string | null;
   vatRateId: string | null;
   enabled: boolean;
+  /**
+   * Optional: also attach this employee to whatever the rule matches.
+   *
+   * This is what makes linking a year of salary payments to a person one action
+   * rather than a hundred. The rules that recognise "TO XINYU ZHANG" already
+   * exist to categorise the payment; naming the employee on the same rule means
+   * applying it backfills the history too.
+   */
+  employeeId?: string | null;
 };
 
 const ofTenant = () => eq(categoryRules.tenantId, tenantId());
@@ -165,6 +174,9 @@ export async function applyRulesToTransactions(
         .set({
           categoryId: rule.categoryId ?? null,
           vatRateId: rule.vatRateId ?? null,
+          // Only set when the rule names someone. A rule with no employee must
+          // not clear one that was attached by hand.
+          ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
         })
         .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
       updated++;

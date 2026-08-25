@@ -9,6 +9,7 @@ import {
   categorizeTx,
   setTxVat,
   bulkCategorizeTx,
+  setTxEmployeeAction,
   applyRulesAction,
   setExcludedAction,
 } from "@/app/actions";
@@ -30,6 +31,8 @@ type Props = {
   categories: Category[];
   vatRates: VatRate[];
   receiptCounts: Record<string, number>;
+  /** People this business pays, for attributing a payment to one of them. */
+  people?: { id: string; name: string }[];
   initialFilter?: string;
 };
 
@@ -38,6 +41,7 @@ export function TransactionsView({
   categories,
   vatRates,
   receiptCounts,
+  people = [],
   initialFilter,
 }: Props) {
   const router = useRouter();
@@ -129,6 +133,13 @@ export function TransactionsView({
   function toggleAll() {
     if (selected.size === filtered.length) setSelected(new Set());
     else setSelected(new Set(filtered.map((t) => t.id)));
+  }
+
+  function onEmployee(t: Transaction, employeeId: string) {
+    startTransition(async () => {
+      await setTxEmployeeAction([t.id], employeeId || null);
+      router.refresh();
+    });
   }
 
   function bulkAssign(categoryId: string) {
@@ -392,6 +403,7 @@ export function TransactionsView({
                   <th className="th">Description</th>
                   <th className="th w-56">Category</th>
                   <th className="th w-36">VAT</th>
+                  {people.length > 0 && <th className="th w-40">Paid to</th>}
                   <th className="th w-32 text-right">Amount</th>
                   <th className="th w-16 text-center">Receipt</th>
                 </tr>
@@ -493,6 +505,28 @@ export function TransactionsView({
                           ))}
                         </select>
                       </td>
+                      {people.length > 0 && (
+                        <td className="td">
+                          {/* Only meaningful for money going out, so the control
+                              is only offered there. */}
+                          {isOut ? (
+                            <select
+                              value={t.employeeId ?? ""}
+                              onChange={(e) => onEmployee(t, e.target.value)}
+                              className="w-full rounded-md border border-line bg-card px-2 py-1 text-sm outline-none focus:border-brand"
+                            >
+                              <option value="">—</option>
+                              {people.map((pp) => (
+                                <option key={pp.id} value={pp.id}>
+                                  {pp.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-ink-faint">—</span>
+                          )}
+                        </td>
+                      )}
                       <td
                         className={`td text-right tabular font-semibold ${
                           isOut ? "text-money-out" : "text-money-in"

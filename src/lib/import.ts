@@ -18,6 +18,9 @@ export type ParsedRow = Omit<
   | "excluded"
   | "excludedReason"
   | "tenantId"
+  // A parsed statement row knows nothing about who a payment went to; that is
+  // attached afterwards, by hand or by a rule.
+  | "employeeId"
 > & {
   categoryId: null;
   vatRateId: null;

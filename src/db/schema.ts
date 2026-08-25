@@ -144,6 +144,20 @@ export const transactions = pgTable(
     // bank line loses the audit trail — but counted nowhere.
     excluded: boolean("excluded").notNull().default(false),
     excludedReason: text("excluded_reason").default(""),
+    /**
+     * Who this payment went to, when it went to a person on the payroll.
+     *
+     * Deliberately independent of pay runs and RPNs: knowing that €1,700 went to
+     * a named employee is useful on its own, and demanding a Revenue RPN import
+     * before you can record that is the wrong order for a small business. A
+     * payslip can reference the same employee later without this changing.
+     */
+    // A thunk, not a foreignKey() entry: `employees` is declared further down
+    // this file, and the table-extras callback runs immediately whereas
+    // .references() is deferred.
+    employeeId: text("employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
     importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(now),
   },
@@ -152,6 +166,7 @@ export const transactions = pgTable(
     index("tx_booked_idx").on(t.tenantId, t.bookedDate),
     index("tx_cat_idx").on(t.tenantId, t.categoryId),
     index("tx_excluded_idx").on(t.tenantId, t.excluded),
+    index("tx_employee_idx").on(t.tenantId, t.employeeId),
   ],
 );
 
@@ -367,6 +382,10 @@ export const categoryRules = pgTable(
     categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
     vatRateId: text("vat_rate_id").references(() => vatRates.id, { onDelete: "set null" }),
     enabled: boolean("enabled").notNull().default(true),
+    /** Optional: also attach this employee to whatever the rule matches. */
+    employeeId: text("employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
     sortOrder: integer("sort_order").notNull().default(0),
     timesApplied: integer("times_applied").notNull().default(0),
     createdAt: text("created_at").notNull().default(now),
