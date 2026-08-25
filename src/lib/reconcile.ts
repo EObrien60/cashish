@@ -117,8 +117,11 @@ export function suggestMatches(
 ): InflowMatch[] {
   const tolerance = options.tolerance ?? 0.02;
   const open = openInvoices();
+  const inflows = unmatchedInflows(options);
+  const rank = { high: 0, medium: 1, low: 2 } as const;
 
-  return unmatchedInflows(options).map((tx) => {
+  /* Score every inflow against every open invoice. */
+  const scored = inflows.map((tx) => {
     const haystack = `${tx.description} ${tx.reference} ${tx.payer}`;
     const candidates: MatchCandidate[] = [];
 
@@ -141,9 +144,46 @@ export function suggestMatches(
       });
     }
 
-    const rank = { high: 0, medium: 1, low: 2 } as const;
     candidates.sort((a, b) => rank[a.confidence] - rank[b.confidence] || a.outstanding - b.outstanding);
     return { transaction: tx, candidates };
+  });
+
+  /*
+   * Assign one invoice to at most one inflow.
+   *
+   * Scoring each inflow on its own is not enough: a client paying five identical monthly
+   * invoices produces five identical amounts, every one of which scores perfectly against
+   * every one of those invoices. Independently, all five name the same invoice and the
+   * other four look unpaid. So the best pairs are taken first and each invoice is then out
+   * of the running, oldest invoice first — which is also the order money is meant to
+   * settle a ledger.
+   */
+  const pairs = scored.flatMap(({ transaction, candidates }) =>
+    candidates.map((candidate) => ({ txId: transaction.id, candidate })),
+  );
+  pairs.sort(
+    (a, b) =>
+      rank[a.candidate.confidence] - rank[b.candidate.confidence] ||
+      a.candidate.issueDate.localeCompare(b.candidate.issueDate) ||
+      a.candidate.outstanding - b.candidate.outstanding,
+  );
+
+  const claimedInvoice = new Set<string>();
+  const assigned = new Map<string, string>(); // txId -> invoiceId
+  for (const { txId, candidate } of pairs) {
+    if (assigned.has(txId) || claimedInvoice.has(candidate.invoiceId)) continue;
+    assigned.set(txId, candidate.invoiceId);
+    claimedInvoice.add(candidate.invoiceId);
+  }
+
+  /* The assigned invoice leads; the rest stay listed, minus anything another inflow took. */
+  return scored.map(({ transaction, candidates }) => {
+    const mine = assigned.get(transaction.id);
+    const ordered = [
+      ...candidates.filter((c) => c.invoiceId === mine),
+      ...candidates.filter((c) => c.invoiceId !== mine && !claimedInvoice.has(c.invoiceId)),
+    ];
+    return { transaction, candidates: ordered };
   });
 }
 

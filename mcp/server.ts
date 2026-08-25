@@ -30,6 +30,7 @@ import {
 import {
   createInvoice,
   deleteInvoice,
+  deletePayment,
   getInvoice,
   listInvoices,
   nextInvoiceNumber,
@@ -672,6 +673,21 @@ server.registerTool(
       note: note ?? "",
     });
     return text({ ok: true, invoice });
+  },
+);
+
+server.registerTool(
+  "cashish_delete_payment",
+  {
+    title: "Remove a recorded payment",
+    description:
+      "Deletes one payment from an invoice and recomputes that invoice's status. For a payment recorded in error, or one recorded without a link to the bank line that settled it — an unlinked payment leaves the invoice looking paid while the money still shows as an unexplained inflow, which is the same figure counted twice. Payment ids come from cashish_invoice.",
+    inputSchema: { paymentId: z.string() },
+  },
+  async ({ paymentId }) => {
+    if (!WRITES_ENABLED) return writeGuard();
+    deletePayment(paymentId);
+    return text({ ok: true, deleted: paymentId });
   },
 );
 
