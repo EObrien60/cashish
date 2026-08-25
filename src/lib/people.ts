@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db, first, schema } from "@/db/client";
 import { tenantId } from "@/db/context";
 import { uid } from "./id";
@@ -126,6 +126,9 @@ export async function paidByEmployee() {
         eq(transactions.tenantId, tid),
         isNotNull(transactions.employeeId),
         eq(transactions.excluded, false),
+        // Money OUT only. A director funding the company is linked to the same
+        // person, and abs() would have added it to what they were paid.
+        lt(transactions.amount, 0),
       ),
     )
     .groupBy(transactions.employeeId);
@@ -181,9 +184,14 @@ export async function getPersonDetail(id: string) {
   ]);
 
   const counted = txs.filter((t) => !t.excluded);
+  // Split by direction: what they were paid, and anything they put in. A
+  // director often appears on both sides, and summing the absolute values would
+  // report the two as one number.
+  const paidOut = counted.filter((t) => t.amount < 0);
+  const cameIn = counted.filter((t) => t.amount > 0);
   /** Paid per calendar year, which is the question actually asked of this data. */
   const byYear = new Map<string, { year: string; paid: number; count: number }>();
-  for (const t of counted) {
+  for (const t of paidOut) {
     const year = (t.bookedDate || "").slice(0, 4);
     const y = byYear.get(year) ?? { year, paid: 0, count: 0 };
     y.paid = round2(y.paid + Math.abs(t.amount));
@@ -197,11 +205,13 @@ export async function getPersonDetail(id: string) {
     payslips: slips,
     rpnCount: rpnRows.length,
     totals: {
-      paid: round2(counted.reduce((s, t) => s + Math.abs(t.amount), 0)),
-      count: counted.length,
+      paid: round2(paidOut.reduce((s, t) => s + Math.abs(t.amount), 0)),
+      count: paidOut.length,
+      receivedFrom: round2(cameIn.reduce((s, t) => s + t.amount, 0)),
+      receivedCount: cameIn.length,
       excludedCount: txs.length - counted.length,
-      firstPaid: counted.length ? counted[counted.length - 1].bookedDate : null,
-      lastPaid: counted.length ? counted[0].bookedDate : null,
+      firstPaid: paidOut.length ? paidOut[paidOut.length - 1].bookedDate : null,
+      lastPaid: paidOut.length ? paidOut[0].bookedDate : null,
       payslipGross: round2(slips.reduce((s, p) => s + p.grossPay, 0)),
       payslipNet: round2(slips.reduce((s, p) => s + p.netPay, 0)),
     },

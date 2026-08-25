@@ -156,3 +156,33 @@ test("an employee from another business cannot be attached", async () => {
     assert.ok(!names.includes("Their Person"));
   });
 });
+
+test("money in from a person is not counted as money paid to them", async () => {
+  const out = await pay(a, "To The Director", 2000, "2026-06-01");
+  const inflow = await asTenant(a, async () => {
+    const id = uid();
+    await db.insert(schema.transactions).values({
+      id,
+      tenantId: a,
+      bookedDate: "2026-06-05",
+      amount: 5000, // the director putting money IN
+      description: "From The Director",
+      payer: "The Director",
+      importBatch: uid(),
+    });
+    return id;
+  });
+
+  await asTenant(a, async () => {
+    const { employee } = await createPerson({ name: "The Director" });
+    await setTransactionEmployee([out, inflow], employee.id);
+
+    const detail = await getPersonDetail(employee.id);
+    assert.equal(detail?.totals.paid, 2000, "only the outflow is pay");
+    assert.equal(detail?.totals.count, 1);
+    assert.equal(detail?.totals.receivedFrom, 5000, "the inflow is reported separately");
+    assert.equal(detail?.totals.receivedCount, 1);
+    assert.equal(detail?.transactions.length, 2, "both are still listed");
+    assert.equal((await paidByEmployee()).get(employee.id)?.paid, 2000);
+  });
+});

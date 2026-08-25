@@ -56,11 +56,20 @@ export default async function PersonPage({
             value={String(payslips.length)}
             sub={payslips.length ? `gross ${money(totals.payslipGross)}` : "none yet"}
           />
-          <StatCard
-            label="RPNs on file"
-            value={String(rpnCount)}
-            sub={rpnCount ? undefined : "not needed to record payments"}
-          />
+          {totals.receivedCount > 0 ? (
+            <StatCard
+              label="Received from them"
+              value={money(totals.receivedFrom)}
+              tone="in"
+              sub={`${totals.receivedCount} inflow(s) — e.g. director funding`}
+            />
+          ) : (
+            <StatCard
+              label="RPNs on file"
+              value={String(rpnCount)}
+              sub={rpnCount ? undefined : "not needed to record payments"}
+            />
+          )}
         </div>
 
         {payslips.length === 0 && totals.count > 0 && (
