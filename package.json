@@ -10,11 +10,10 @@
     "start": "next start",
     "lint": "next lint",
     "db:studio": "drizzle-kit studio",
-    "mcp": "tsx mcp/server.ts",
+    "mcp": "tsx mcp/stdio.ts",
     "export:integration": "tsx scripts/export-integration.ts",
     "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts",
-    "test": "DATABASE_URL=./cashish-test.db tsx --test tests/*.test.ts",
-    "pretest": "rm -f ./cashish-test.db ./cashish-test.db-journal",
+    "test": "DATABASE_URL=${DATABASE_URL:-postgres://cashish:cashish@127.0.0.1:5470/cashish_test} tsx --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts"
   },
