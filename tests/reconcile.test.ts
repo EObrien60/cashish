@@ -124,3 +124,33 @@ test("one invoice cannot be claimed by two payments", async () => {
     assert.equal(leftover.length, 1, "the other is left for a person to explain");
   });
 });
+
+test("money that arrived before an invoice existed is not offered as its payment", async () => {
+  await reset();
+  await asTenant(tenant, async () => {
+    const { customer } = await createCustomer({ name: "Time Travel Client" });
+    await createInvoice({
+      customerId: customer.id,
+      number: "5001",
+      status: "sent",
+      issueDate: "2026-06-01",
+      lines: [{ description: "Work", quantity: 1, unitPrice: 1000, vatRateId: null, productId: null }],
+    });
+
+    // Exactly the right amount and the right name — but a year too early.
+    await inflow("From TIME TRAVEL CLIENT", 1000, "2025-06-01");
+    const early = await reconcileReport();
+    assert.equal(
+      early.confidentMatches.length,
+      0,
+      "an inflow predating the invoice must never be a confident match",
+    );
+    assert.equal(early.needsInvoice.length, 1, "it is unexplained money, not a payment");
+
+    // The same inflow after the issue date is matched.
+    await inflow("From TIME TRAVEL CLIENT", 1000, "2026-06-15");
+    const later = await reconcileReport();
+    assert.equal(later.confidentMatches.length, 1);
+    assert.equal(later.confidentMatches[0]?.transaction.date, "2026-06-15");
+  });
+});

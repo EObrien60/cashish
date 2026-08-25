@@ -134,6 +134,12 @@ export async function suggestMatches(
     const candidates: MatchCandidate[] = [];
 
     for (const invoice of open) {
+      // Money cannot settle an invoice that did not exist when it arrived.
+      // Without this, an old inflow of the right size is matched to a much later
+      // invoice on amount alone — which is how a payment ends up dated before
+      // the document it pays, and cash-basis VAT is driven by payment dates.
+      if (tx.date < invoice.issueDate) continue;
+
       const delta = Math.abs(invoice.outstanding - tx.amount);
       const named = mentions(haystack, invoice.customerName);
       const exact = delta <= tolerance;
@@ -167,11 +173,23 @@ export async function suggestMatches(
    * settle a ledger.
    */
   const pairs = scored.flatMap(({ transaction, candidates }) =>
-    candidates.map((candidate) => ({ txId: transaction.id, candidate })),
+    candidates.map((candidate) => ({
+      txId: transaction.id,
+      txDate: transaction.date,
+      candidate,
+    })),
   );
   pairs.sort(
     (a, b) =>
       rank[a.candidate.confidence] - rank[b.candidate.confidence] ||
+      // Earliest money first, then earliest invoice.
+      //
+      // The payment date has to lead. An inflow can only settle an invoice that
+      // already existed, so the oldest money has the fewest invoices available
+      // to it. Ordering by invoice alone hands the oldest invoice to the newest
+      // payment and strands the older ones with nothing left to claim — five
+      // monthly payments against five monthly invoices then matched only three.
+      a.txDate.localeCompare(b.txDate) ||
       a.candidate.issueDate.localeCompare(b.candidate.issueDate) ||
       a.candidate.outstanding - b.candidate.outstanding,
   );
