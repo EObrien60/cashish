@@ -3,25 +3,25 @@
   "number": "1010",
   "lines": [
    {
-    "description": "Kingston 128GB Micro SD Card",
     "vat": "Standard",
     "quantity": 40,
     "unitPrice": 10.0,
-    "amount": 400.0
+    "amount": 400.0,
+    "description": "Kingston 128GB Micro SD Card"
    },
    {
-    "description": "HP 250 G10 i5 16GB Laptop",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 650.0,
-    "amount": 650.0
+    "amount": 650.0,
+    "description": "HP 250 G10 i5 16GB Laptop"
    },
    {
-    "description": "HP Photosmart 7520 Ink Cartridge",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 68.0,
-    "amount": 68.0
+    "amount": 68.0,
+    "description": "HP Photosmart 7520 Ink Cartridge Set"
    }
   ],
   "paid": true,
@@ -37,25 +37,25 @@
   "number": "1011",
   "lines": [
    {
-    "description": "Windows Server 2022 Standard",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 300.0,
-    "amount": 300.0
+    "amount": 300.0,
+    "description": "Windows Server 2022 Standard"
    },
    {
-    "description": "Windows Server 2022 RDS CALs",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 200.0,
-    "amount": 200.0
+    "amount": 200.0,
+    "description": "Windows Server 2022 RDS CALs (50 Pack)"
    },
    {
-    "description": "16GB PC4-21300 Reg ECC DDR4",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 125.0,
-    "amount": 125.0
+    "amount": 125.0,
+    "description": "16GB PC4-21300 Reg ECC DDR4 RAM (1x16GB)"
    }
   ],
   "paid": true,
@@ -71,18 +71,18 @@
   "number": "1012",
   "lines": [
    {
-    "description": "HP 250 G10 i5 16GB Laptop",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 650.0,
-    "amount": 650.0
+    "amount": 650.0,
+    "description": "HP 250 G10 i5 16GB Laptop"
    },
    {
-    "description": "Microsoft Office 2024 Home &",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 200.0,
-    "amount": 200.0
+    "amount": 200.0,
+    "description": "Microsoft Office 2024 Home & Business"
    }
   ],
   "paid": true,
@@ -98,18 +98,18 @@
   "number": "1013",
   "lines": [
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1000.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 120.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    }
   ],
   "paid": true,
@@ -125,18 +125,18 @@
   "number": "1051",
   "lines": [
    {
-    "description": "Software Development (hourly)",
     "vat": "Standard",
     "quantity": 125,
     "unitPrice": 20.0,
-    "amount": 2500.0
+    "amount": 2500.0,
+    "description": "Software Development (hourly)"
    },
    {
-    "description": "MacBook Pro 14\" M4 Pro 24GB /",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1935.87,
-    "amount": 1935.87
+    "amount": 1935.87,
+    "description": "MacBook Pro 14\" M4 Pro 24GB / 512GB"
    }
   ],
   "paid": true,
@@ -152,11 +152,11 @@
   "number": "1052",
   "lines": [
    {
-    "description": "HP Pro 400 Mini 400 G9 i3 8GB",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 525.0,
-    "amount": 525.0
+    "amount": 525.0,
+    "description": "HP Pro 400 Mini 400 G9 i3 8GB 256GB"
    }
   ],
   "paid": true,
@@ -172,18 +172,18 @@
   "number": "1053",
   "lines": [
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1000.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 120.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    }
   ],
   "paid": true,
@@ -199,11 +199,11 @@
   "number": "1054",
   "lines": [
    {
-    "description": "HPE 1.8TB 7.2k RPM SAS LFF",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 160.0,
-    "amount": 320.0
+    "amount": 320.0,
+    "description": "HPE 1.8TB 7.2k RPM SAS LFF Drive (Refurbished)"
    }
   ],
   "paid": true,
@@ -219,18 +219,18 @@
   "number": "1055",
   "lines": [
    {
-    "description": "HP Pro 400 G9 SFF i5",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 725.0,
-    "amount": 725.0
+    "amount": 725.0,
+    "description": "HP Pro 400 G9 SFF i5 16GB/512GB K12"
    },
    {
-    "description": "Microsoft Office 2024 Home &",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 200.0,
-    "amount": 200.0
+    "amount": 200.0,
+    "description": "Microsoft Office 2024 Home & Business"
    }
   ],
   "paid": true,
@@ -246,11 +246,11 @@
   "number": "1056",
   "lines": [
    {
-    "description": "8GB DDR4 PC4-19200 8GB DDR4 PC4-19200 Non ECC",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 50.0,
-    "amount": 50.0
+    "amount": 50.0,
+    "description": "8GB DDR4 PC4-19200 Non ECC"
    }
   ],
   "paid": true,
@@ -266,11 +266,11 @@
   "number": "1057",
   "lines": [
    {
-    "description": "Guides Collective Development",
     "vat": "Export",
     "quantity": 1,
     "unitPrice": 10500.0,
-    "amount": 10500.0
+    "amount": 10500.0,
+    "description": "Guides Collective Development (as set out by SOW) (50% Deposit)"
    }
   ],
   "paid": true,
@@ -286,74 +286,74 @@
   "number": "1058",
   "lines": [
    {
-    "description": "HP 250 G10 i5 16GB Laptop",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 650.0,
-    "amount": 650.0
+    "amount": 650.0,
+    "description": "HP 250 G10 i5 16GB Laptop"
    },
    {
-    "description": "StarTech Mouse pad with Hand",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 20.0,
-    "amount": 80.0
+    "amount": 80.0,
+    "description": "StarTech Mouse pad with Hand Rest (Black)"
    },
    {
-    "description": "HP 285 Wireless Mouse",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 17.5,
-    "amount": 70.0
+    "amount": 70.0,
+    "description": "HP 285 Wireless Mouse"
    },
    {
-    "description": "StarTech USB to VGA Adapter",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 20.0,
-    "amount": 40.0
+    "amount": 40.0,
+    "description": "StarTech USB to VGA Adapter"
    },
    {
-    "description": "HP Renew Business Notebook",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 25.0,
-    "amount": 50.0
+    "amount": 50.0,
+    "description": "HP Renew Business Notebook Bag (Up to 17.3\")"
    },
    {
-    "description": "Philips 4000 series Wireless",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 30.0,
-    "amount": 30.0
+    "amount": 30.0,
+    "description": "Philips 4000 series Wireless Mouse & Keyboard"
    },
    {
-    "description": "StarTech USB C to 3x USB3 A +",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 35.0,
-    "amount": 35.0
+    "amount": 35.0,
+    "description": "StarTech USB C to 3x USB3 A + Gigabit Ethernet"
    },
    {
-    "description": "Dual HDMI Adapter",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 50.0,
-    "amount": 50.0
+    "amount": 50.0,
+    "description": "Dual HDMI Adapter"
    },
    {
-    "description": "StarTech Height Adjustable",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 27.99,
-    "amount": 55.98
+    "amount": 55.98,
+    "description": "StarTech Height Adjustable Monitor Riser with Drawer"
    },
    {
-    "description": "Logitech Stereo H111 Headset",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 20.0,
-    "amount": 60.0
+    "amount": 60.0,
+    "description": "Logitech Stereo H111 Headset"
    }
   ],
   "paid": true,
@@ -369,18 +369,18 @@
   "number": "1059",
   "lines": [
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1000.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 120.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    }
   ],
   "paid": true,
@@ -396,11 +396,11 @@
   "number": "1060",
   "lines": [
    {
-    "description": "Software Development (hourly)",
     "vat": "Standard",
     "quantity": 125,
     "unitPrice": 40.0,
-    "amount": 5000.0
+    "amount": 5000.0,
+    "description": "Software Development (hourly)"
    }
   ],
   "paid": true,
@@ -416,18 +416,18 @@
   "number": "1061",
   "lines": [
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1000.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 120.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    }
   ],
   "paid": true,
@@ -443,18 +443,18 @@
   "number": "1062",
   "lines": [
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1000.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 120.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    }
   ],
   "paid": true,
@@ -470,11 +470,11 @@
   "number": "1063",
   "lines": [
    {
-    "description": "Guides Collective Development",
     "vat": "Export",
     "quantity": 1,
     "unitPrice": 10500.0,
-    "amount": 10500.0
+    "amount": 10500.0,
+    "description": "Guides Collective Development (as set out by SOW) (50% Remainder)"
    }
   ],
   "paid": true,
@@ -490,18 +490,18 @@
   "number": "1064",
   "lines": [
    {
-    "description": "Guides Collective Support Hours",
     "vat": "Export",
     "quantity": 80,
     "unitPrice": 50.0,
-    "amount": 4000.0
+    "amount": 4000.0,
+    "description": "Guides Collective Support Hours"
    },
    {
-    "description": "Guides Collective Development",
     "vat": "Export",
     "quantity": 1,
     "unitPrice": 2000.0,
-    "amount": 2000.0
+    "amount": 2000.0,
+    "description": "Guides Collective Development Addendum"
    }
   ],
   "paid": true,
@@ -517,95 +517,95 @@
   "number": "1066",
   "lines": [
    {
-    "description": "HP 250R G9 Core 5 16GB RAM",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 650.0,
-    "amount": 650.0
+    "amount": 650.0,
+    "description": "HP 250R G9 Core 5 16GB RAM 512GB SSD Laptop"
    },
    {
-    "description": "StarTech Mouse pad with Hand",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 20.0,
-    "amount": 20.0
+    "amount": 20.0,
+    "description": "StarTech Mouse pad with Hand Rest (Black)"
    },
    {
-    "description": "StarTech USB to VGA Adapter",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 20.0,
-    "amount": 40.0
+    "amount": 40.0,
+    "description": "StarTech USB to VGA Adapter"
    },
    {
-    "description": "StarTech USB C to 3x USB3 A +",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 35.0,
-    "amount": 35.0
+    "amount": 35.0,
+    "description": "StarTech USB C to 3x USB3 A + Gigabit Ethernet"
    },
    {
-    "description": "HP 285 Wireless Mouse",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 40.0,
-    "amount": 120.0
+    "amount": 120.0,
+    "description": "HP 285 Wireless Mouse"
    },
    {
-    "description": "Philips 4000 series Wireless",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 30.0,
-    "amount": 30.0
+    "amount": 30.0,
+    "description": "Philips 4000 series Wireless Mouse & Keyboard"
    },
    {
-    "description": "Logitech Stereo H111 Headset",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 20.0,
-    "amount": 60.0
+    "amount": 60.0,
+    "description": "Logitech Stereo H111 Headset"
    },
    {
-    "description": "AOC 27P2Q 27\" LED 1080p 75Hz",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 150.0,
-    "amount": 600.0
+    "amount": 600.0,
+    "description": "AOC 27P2Q 27\" LED 1080p 75Hz Monitor"
    },
    {
-    "description": "Logitech K120 Keyboard",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 15.0,
-    "amount": 30.0
+    "amount": 30.0,
+    "description": "Logitech K120 Keyboard"
    },
    {
-    "description": "Kensington Easy Riser Go Laptop",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 20.0,
-    "amount": 60.0
+    "amount": 60.0,
+    "description": "Kensington Easy Riser Go Laptop Cooling Stand"
    },
    {
-    "description": "Netgear GS105 5 port Gigabit",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 25.0,
-    "amount": 25.0
+    "amount": 25.0,
+    "description": "Netgear GS105 5 port Gigabit Network Switch"
    },
    {
-    "description": "Ubiquiti Unifi Gateway Lite",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 120.0,
-    "amount": 120.0
+    "amount": 120.0,
+    "description": "Ubiquiti Unifi Gateway Lite"
    },
    {
-    "description": "Ubiquiti Unifi 24 Port Managed",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 240.0,
-    "amount": 240.0
+    "amount": 240.0,
+    "description": "Ubiquiti Unifi 24 Port Managed Network Switch"
    }
   ],
   "paid": true,
@@ -621,123 +621,123 @@
   "number": "1067",
   "lines": [
    {
-    "description": "Managed Services (Dec, Jan, Feb,",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 1000.0,
-    "amount": 4000.0
+    "amount": 4000.0,
+    "description": "Managed Services (Dec, Jan, Feb, Mar)"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 8,
     "unitPrice": 120.0,
-    "amount": 960.0
+    "amount": 960.0,
+    "description": "Datto SIRIS Agent 1 Year retention x2 (Dec, Jan, Feb, Mar)"
    },
    {
-    "description": "Logitech Stereo H111 Headset",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 20.0,
-    "amount": 80.0
+    "amount": 80.0,
+    "description": "Logitech Stereo H111 Headset"
    },
    {
-    "description": "StarTech Mouse pad with Hand",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 20.0,
-    "amount": 20.0
+    "amount": 20.0,
+    "description": "StarTech Mouse pad with Hand Rest (Black)"
    },
    {
-    "description": "Dual HDMI Adapter",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 70.0,
-    "amount": 70.0
+    "amount": 70.0,
+    "description": "Dual HDMI Adapter"
    },
    {
-    "description": "StarTech USB C to 3x USB3 A +",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 35.0,
-    "amount": 35.0
+    "amount": 35.0,
+    "description": "StarTech USB C to 3x USB3 A + Gigabit Ethernet"
    },
    {
-    "description": "AOC 27P2Q 27\" LED 1080p 75Hz",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 150.0,
-    "amount": 450.0
+    "amount": 450.0,
+    "description": "AOC 27P2Q 27\" LED 1080p 75Hz Monitor"
    },
    {
-    "description": "Netgear GS105 5 port Gigabit",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 25.0,
-    "amount": 25.0
+    "amount": 25.0,
+    "description": "Netgear GS105 5 port Gigabit Network Switch"
    },
    {
-    "description": "StarTech USB to VGA Adapter",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 20.0,
-    "amount": 20.0
+    "amount": 20.0,
+    "description": "StarTech USB to VGA Adapter"
    },
    {
-    "description": "Laptop Bag",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 40.0,
-    "amount": 40.0
+    "amount": 40.0,
+    "description": "Laptop Bag"
    },
    {
-    "description": "Philips 4000 series Wireless",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 30.0,
-    "amount": 30.0
+    "amount": 30.0,
+    "description": "Philips 4000 series Wireless Mouse & Keyboard"
    },
    {
-    "description": "Lenovo V14 G5 IRL c5- Lenovo V14 G5 IRL c5-120u 16GB",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 650.0,
-    "amount": 650.0
+    "amount": 650.0,
+    "description": "Lenovo V14 G5 IRL c5-120u 16GB"
    },
    {
-    "description": "HP ProDesk 2 SFF",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 700.0,
-    "amount": 700.0
+    "amount": 700.0,
+    "description": "HP ProDesk 2 SFF"
    },
    {
-    "description": "Switch Flex Mini (UK Version /",
     "vat": "Standard",
     "quantity": 5,
     "unitPrice": 30.0,
-    "amount": 150.0
+    "amount": 150.0,
+    "description": "Switch Flex Mini (UK Version / Single Unit)"
    },
    {
-    "description": "qMechanic - Final Payment",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 5000.0,
-    "amount": 5000.0
+    "amount": 5000.0,
+    "description": "qMechanic - Final Payment"
    },
    {
-    "description": "Ethernet Cable (1m)",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 4.0,
-    "amount": 16.0
+    "amount": 16.0,
+    "description": "Ethernet Cable (1m)"
    },
    {
-    "description": "Ethernet Cable (5m)",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 6.0,
-    "amount": 12.0
+    "amount": 12.0,
+    "description": "Ethernet Cable (5m)"
    }
   ],
   "paid": true,
@@ -753,60 +753,60 @@
   "number": "1068",
   "lines": [
    {
-    "description": "AOC 27P2Q 27\" LED",
     "vat": "Standard",
     "quantity": 6,
     "unitPrice": 150.0,
-    "amount": 900.0
+    "amount": 900.0,
+    "description": "AOC 27\" Monitor"
    },
    {
-    "description": "Managed Services",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 1000.0,
-    "amount": 3000.0
+    "amount": 3000.0,
+    "description": "Managed Services"
    },
    {
-    "description": "Datto SIRIS Agent 1 Year retention",
     "vat": "Standard",
     "quantity": 6,
     "unitPrice": 120.0,
-    "amount": 720.0
+    "amount": 720.0,
+    "description": "Datto SIRIS Agent 1 Year retention"
    },
    {
-    "description": "Ubiquiti Unifi Switch Pro 48 PoE",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 1100.0,
-    "amount": 1100.0
+    "amount": 1100.0,
+    "description": "Ubiquiti Unifi Switch Pro 48 PoE"
    },
    {
-    "description": "Ubiquiti Unifi Access Point U6 Plus",
     "vat": "Standard",
     "quantity": 4,
     "unitPrice": 110.0,
-    "amount": 440.0
+    "amount": 440.0,
+    "description": "Ubiquiti Unifi Access Point U6 Plus"
    },
    {
-    "description": "HP 255R G10 15.6\" Notebook -",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 550.0,
-    "amount": 550.0
+    "amount": 550.0,
+    "description": "G10 15.6\" Notebook - 5 - 7535U Win 11 Pro"
    },
    {
-    "description": "Volvo Software",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 300.0,
-    "amount": 300.0
+    "amount": 300.0,
+    "description": "Volvo Software"
    },
    {
-    "description": "Migration Services",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 500.0,
-    "amount": 1000.0
+    "amount": 1000.0,
+    "description": "Migration Services"
    }
   ],
   "paid": true,
@@ -822,18 +822,18 @@
   "number": "1069",
   "lines": [
    {
-    "description": "HP 250R G9 Core 5 16GB RAM",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 700.0,
-    "amount": 700.0
+    "amount": 700.0,
+    "description": "HP 250R G9 Core 5 16GB RAM 512GB SSD Laptop"
    },
    {
-    "description": "Microsoft Office 2024 Home &",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 200.0,
-    "amount": 200.0
+    "amount": 200.0,
+    "description": "Microsoft Office 2024 Home & Business"
    }
   ],
   "paid": true,
@@ -849,11 +849,11 @@
   "number": "1070",
   "lines": [
    {
-    "description": "AOC 24E4U 24\" 1080p @ 120Hz",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 110.0,
-    "amount": 110.0
+    "amount": 110.0,
+    "description": "AOC 24E4U 24\" 1080p @ 120Hz IPS monitor HDMI, VGA, Displayport"
    }
   ],
   "paid": true,
@@ -869,53 +869,53 @@
   "number": "1071",
   "lines": [
    {
-    "description": "Lenovo ThinkCentre neo 50q Gen",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 800.0,
-    "amount": 1600.0
+    "amount": 1600.0,
+    "description": "Lenovo ThinkCentre neo 50q Gen 6 13HR - Core Ultra 5 226V 16/512GB"
    },
    {
-    "description": "AOC 27E4U 27\" 1080p 120Hz",
     "vat": "Standard",
     "quantity": 6,
     "unitPrice": 150.0,
-    "amount": 900.0
+    "amount": 900.0,
+    "description": "AOC 27E4U 27\" 1080p 120Hz 4ms IPS HDMI, VGA, DP Monitor"
    },
    {
-    "description": "HP 285 Wireless Mouse",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 50.0,
-    "amount": 100.0
+    "amount": 100.0,
+    "description": "HP 285 Wireless Mouse"
    },
    {
-    "description": "Dual HDMI Adapter",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 70.0,
-    "amount": 140.0
+    "amount": 140.0,
+    "description": "Dual HDMI Adapter"
    },
    {
-    "description": "Startech 3 Port USB-C Hub with",
     "vat": "Standard",
     "quantity": 2,
     "unitPrice": 50.0,
-    "amount": 100.0
+    "amount": 100.0,
+    "description": "Startech 3 Port USB-C Hub with Gigabit Ethernet & 60W Power Delivery Passthrough Laptop Charging"
    },
    {
-    "description": "DisplayLink USB 3.0 to HDMI",
     "vat": "Standard",
     "quantity": 3,
     "unitPrice": 60.0,
-    "amount": 180.0
+    "amount": 180.0,
+    "description": "DisplayLink USB 3.0 to HDMI"
    },
    {
-    "description": "HP Renew Business Notebook",
     "vat": "Standard",
     "quantity": 1,
     "unitPrice": 20.0,
-    "amount": 20.0
+    "amount": 20.0,
+    "description": "HP Renew Business Notebook Bag (Up to 15.6\")"
    }
   ],
   "paid": false,
