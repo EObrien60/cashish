@@ -18,6 +18,21 @@ import { join, dirname } from "node:path";
 const hasBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
 const LOCAL_ROOT = join(process.env.CASHISH_DATA_DIR ?? process.cwd(), "data", "blobs");
 
+/**
+ * The disk fallback is for local dev only. On Vercel the filesystem is read-only,
+ * so falling back there would surface as an opaque EROFS from deep inside a
+ * write — a confusing 500 for what is really a missing configuration step.
+ */
+function assertLocalFallbackAllowed(operation: string): void {
+  if (process.env.VERCEL) {
+    throw new Error(
+      `Cannot ${operation} a receipt: BLOB_READ_WRITE_TOKEN is not set and this is a ` +
+        "Vercel deployment, which has no writable filesystem. Connect a Vercel Blob " +
+        "store to this project (Storage tab, or `vercel blob create-store`) and redeploy.",
+    );
+  }
+}
+
 export type StoredBlob = { pathname: string };
 
 export async function putBlob(
@@ -37,6 +52,7 @@ export async function putBlob(
     });
     return { pathname: result.pathname };
   }
+  assertLocalFallbackAllowed("store");
   const abs = join(LOCAL_ROOT, pathname);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, bytes);
@@ -53,6 +69,8 @@ export async function getBlob(pathname: string): Promise<Buffer | null> {
       return null;
     }
   }
+  // A read is allowed to come back empty rather than throw: a receipt row whose
+  // blob is unreachable should render as unavailable, not break the page.
   const abs = join(LOCAL_ROOT, pathname);
   return existsSync(abs) ? readFileSync(abs) : null;
 }

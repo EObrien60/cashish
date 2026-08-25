@@ -13,6 +13,17 @@ if (!connectionString) {
   process.exit(1);
 }
 
+// This script opens its own pool, so it does not inherit the preview guard in
+// src/db/client.ts. Without the same check here, a preview BUILD would migrate
+// the production database — the one thing a preview must never touch.
+if (process.env.VERCEL_ENV === "preview" && !process.env.CASHISH_ALLOW_PREVIEW_DB) {
+  console.log(
+    "preview deployment: skipping migrations, since DATABASE_URL points at the shared " +
+      "(production) database. Set CASHISH_ALLOW_PREVIEW_DB=1 once preview has its own.",
+  );
+  process.exit(0);
+}
+
 async function main() {
   const pool = new Pool({
     connectionString,

@@ -30,3 +30,4 @@ cashish-test.db*
 # Local Postgres data dir for the dev container, and blob fallback
 data/
 .env*.local
+.vercel

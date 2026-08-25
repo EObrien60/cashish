@@ -36,6 +36,23 @@ function createPool(): Pool {
         "e.g. postgres://cashish:cashish@localhost:5470/cashish_dev",
     );
   }
+
+  // The Neon marketplace integration points Production, Preview AND Development
+  // at the same database. That means a preview deployment of any branch would
+  // read and WRITE the real books — a pull request could quietly delete an
+  // invoice. Refuse instead, loudly, unless someone has deliberately pointed
+  // preview at its own database and said so.
+  //
+  // The right long-term answer is a Neon branch per preview; this guard is what
+  // stops the wrong thing happening until that exists.
+  if (process.env.VERCEL_ENV === "preview" && !process.env.CASHISH_ALLOW_PREVIEW_DB) {
+    throw new Error(
+      "Refusing to connect: this is a preview deployment and DATABASE_URL points at " +
+        "the shared (production) database, so writes here would change the real books. " +
+        "Give preview its own database — a Neon branch — and set " +
+        "CASHISH_ALLOW_PREVIEW_DB=1 to confirm.",
+    );
+  }
   return new Pool({
     connectionString,
     // Neon terminates idle connections; keep the pool small and let it recycle.
