@@ -1,46 +1,107 @@
 # cashish MCP server + integration surface
 
-Two ways for something outside the desktop app to work with the books:
+Three ways for something outside the web app to work with the books.
 
-1. **MCP** (`npm run mcp`) — 25 tools over stdio, for an agent to read transactions,
-   write rules, build customers and reconcile past payments against invoices.
-2. **Integration summary** — one aggregate payload, offered over HTTP and as a file,
-   for Lunar to pull as a snapshot. It is a *summary*: balances per customer, not
-   line-level data.
+1. **MCP over HTTP** — `POST /api/mcp`, authenticated with an API key or an
+   OAuth token. This is the public surface: add it to Claude Code, a script, or
+   claude.ai as a Connector.
+2. **MCP over stdio** — `npm run mcp`, for driving one tenant's books from a
+   terminal against whatever `DATABASE_URL` names.
+3. **Integration summary** — `GET /api/integration/summary`, one aggregate
+   payload for Lunar to pull. A *summary*: balances per customer, not line-level
+   data.
 
-Both read whatever `DATABASE_URL` names, defaulting to `./cashish.db`, the same
-file the app uses. There is no separate service to run.
+The tools are defined once, in `mcp/tools.ts`, and both transports register the
+same set. Every tool calls the same `src/lib` functions the UI does — nothing
+here reimplements a query, a total, invoice numbering, VAT or rule matching.
 
-## MCP
+## Connecting over HTTP
+
+Mint a key (Settings → API keys, or the CLI):
+
+```sh
+npm run api-key -- --tenant <slug> --name "claude code" --role accountant
+```
+
+The key is shown once. Then, in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "cashish": {
+      "type": "http",
+      "url": "https://<your-deployment>/api/mcp",
+      "headers": { "Authorization": "Bearer ck_live_…" }
+    }
+  }
+}
+```
+
+### Roles, not a flag
+
+There is no `CASHISH_MCP_WRITE`. Whether a caller may change the books is
+decided by **its own role**, checked through the same capability map
+(`src/lib/rbac.ts`) the web UI uses:
+
+| role | can |
+|---|---|
+| `viewer` | read everything |
+| `accountant` | read, and change the books |
+| `owner` | that, plus settings, people and keys |
+
+A `viewer` key gets a plain refusal from every write tool, naming the role it
+presented. An environment variable could not express this: one deployment serves
+several tenants and several credentials, and a read-only key must not become a
+writer because the server happened to start with writes enabled.
+
+### OAuth, for clients that cannot hold a key
+
+For claude.ai Connectors and anything else that should not be handed a
+long-lived secret, the deployment is also an OAuth 2.1 authorization server.
+Point the client at the base URL; it discovers the rest:
 
 ```
-npm run mcp                            # read-only
-CASHISH_MCP_WRITE=true npm run mcp     # writes enabled
+/.well-known/oauth-protected-resource
+/.well-known/oauth-authorization-server
+/oauth/register    dynamic client registration
+/oauth/authorize   consent, requires a signed-in owner
+/oauth/token       code exchange and refresh
 ```
 
-`.mcp.json` registers it for Claude Code with writes **off**. Flip
-`CASHISH_MCP_WRITE` to `"true"` there when you want an agent to be able to change
-the books.
+PKCE (S256) is mandatory. Scopes are `books:read` and `books:write`, and a
+token's scopes are intersected with the approving user's role — a viewer cannot
+approve a write token.
 
-**Read tools** — `cashish_overview`, `cashish_transactions`, `cashish_categories`,
+## Connecting over stdio
+
+```sh
+DATABASE_URL=… CASHISH_TENANT=<slug> npm run mcp
+CASHISH_MCP_ROLE=viewer npm run mcp      # rehearse what a read-only caller sees
+```
+
+The tenant must be named: this talks to a multi-tenant database and "whose
+books?" has no default. The role defaults to `owner`, because whoever holds the
+connection string already has everything — but it can be lowered to see what a
+restricted credential would.
+
+## The tools
+
+**Read** — `cashish_overview`, `cashish_transactions`, `cashish_categories`,
 `cashish_rules`, `cashish_test_rule`, `cashish_customers`, `cashish_invoices`,
 `cashish_invoice`, `cashish_reconcile`, `cashish_unmatched_inflows`,
 `cashish_recurring`, `cashish_reports`, `cashish_integration_summary`.
 
-**Write tools** — `cashish_save_rule`, `cashish_delete_rule`, `cashish_apply_rules`,
-`cashish_categorise`, `cashish_note_transaction`, `cashish_create_customer`,
-`cashish_update_customer`, `cashish_create_invoice`, `cashish_match_payment`,
+**Write** — `cashish_save_rule`, `cashish_delete_rule`, `cashish_apply_rules`,
+`cashish_categorise`, `cashish_note_transaction`, `cashish_exclude_transactions`,
+`cashish_create_customer`, `cashish_update_customer`, `cashish_create_invoice`,
+`cashish_match_payment`, `cashish_delete_payment`, `cashish_delete_invoice`,
 `cashish_set_invoice_status`, `cashish_save_recurring`,
 `cashish_generate_due_recurring`.
 
-Every write tool refuses unless `CASHISH_MCP_WRITE=true`, so the default
-registration cannot alter anything. The tools call the same `src/lib` functions the
-UI does — no second implementation of invoice numbering, VAT or rule matching.
-
 ### The reconciliation loop
 
-`cashish_reconcile` is the main workflow. It pairs bank inflows nothing has claimed
-against invoices still owed, and sorts the result into three buckets:
+`cashish_reconcile` is the main workflow. It pairs bank inflows nothing has
+claimed against invoices still owed, and sorts the result into three buckets:
 
 - **confidentMatches** — amount matches *and* the payer name appears in the
   transaction. Feed these straight to `cashish_match_payment`, which defaults the
@@ -50,36 +111,40 @@ against invoices still owed, and sorts the result into three buckets:
   invoice lives in the old system and should be copied in
   (`cashish_create_invoice` with the original `issueDate`), or it was never raised.
 
-`cashish_test_rule` is a dry run: it reports what a rule *would* catch, how many of
-those are still uncategorised, and how many another rule already claims — check it
-before `cashish_save_rule`.
+`cashish_test_rule` is a dry run: it reports what a rule *would* catch, how many
+of those are still uncategorised, and how many another rule already claims —
+check it before `cashish_save_rule`.
 
 ## Integration summary
 
-Same payload either way, versioned by `version` so a consumer can refuse a shape it
-does not understand.
+`GET /api/integration/summary`, `Authorization: Bearer ck_live_…`. Versioned by
+`version` so a consumer can refuse a shape it does not understand.
 
-**HTTP** — `GET /api/integration/summary`, `Authorization: Bearer $CASHISH_INTEGRATION_TOKEN`
-(or `?token=`). It fails closed: with `CASHISH_INTEGRATION_TOKEN` unset every
-request is a 401, so a dev server never serves the books by accident.
-
-**File** — `npm run export:integration -- --out ~/somewhere.json`. This is the one to
-use in practice: cashish is a desktop app, so nothing is listening on a port for
-Lunar to call.
+Authentication is an API key, not a shared token. The previous
+`CASHISH_INTEGRATION_TOKEN` identified no tenant, which in a multi-tenant service
+cannot answer the only question that matters: whose books? A read-only key is
+enough.
 
 Contents: per-customer invoiced/received/outstanding/overdue with the worst
-days-overdue, recurring schedules and when they next fall due, org-wide totals, and
-a bank block (unmatched inflow count and total, last transaction date, uncategorised
-count). No line items, no bank descriptions.
+days-overdue, recurring schedules and when they next fall due, org-wide totals,
+and a bank block (unmatched inflow count and total, last transaction date,
+uncategorised count). No line items, no bank descriptions.
+
+For a file instead of a request:
+
+```sh
+npm run export:integration -- --tenant <slug> --out ~/somewhere.json
+```
 
 ## Working against a scratch database
 
-Never point a test at `cashish.db` — that is the real book.
+Never point a test or an experiment at the production `DATABASE_URL`.
 
-```
-npm run seed:scratch                                    # ./cashish-scratch.db
-DATABASE_URL=./cashish-scratch.db npm run mcp
+```sh
+docker exec cashish-dev-pg psql -U cashish -d cashish_dev -c 'create database cashish_scratch;'
+DATABASE_URL=postgres://cashish:cashish@127.0.0.1:5470/cashish_scratch npm run db:migrate
+DATABASE_URL=postgres://cashish:cashish@127.0.0.1:5470/cashish_scratch npm run seed:scratch
 ```
 
-`scripts/seed-scratch.ts` refuses to run unless `DATABASE_URL` contains "scratch" or
-"test".
+`scripts/seed-scratch.ts` refuses to run unless `DATABASE_URL` names a database
+containing "scratch" or "test".

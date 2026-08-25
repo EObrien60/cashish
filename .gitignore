@@ -31,3 +31,6 @@ cashish-test.db*
 data/
 .env*.local
 .vercel
+
+# Private project notes
+CLAUDE.local.md
