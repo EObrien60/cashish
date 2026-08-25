@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { roleFor } from "./auth";
 import type { Role } from "./rbac";
+import { SESSION_COOKIE } from "./session-cookie";
 
 // ---------------------------------------------------------------------------
 // The browser session.
@@ -13,7 +14,7 @@ import type { Role } from "./rbac";
 // what you may do.
 // ---------------------------------------------------------------------------
 
-export const SESSION_COOKIE = "cashish_session";
+export { SESSION_COOKIE } from "./session-cookie";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function secret(): Uint8Array {
