@@ -1,5 +1,6 @@
-import { db, schema } from "@/db/client";
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { db, first, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import { uid } from "./id";
 import { round2 } from "./format";
 import { currentRpn } from "./rpn-import";
@@ -29,40 +30,67 @@ const PERIODS_PER_YEAR = 12; // monthly
 
 // ---- Employees ------------------------------------------------------------
 
-export type EmployeeInput = Omit<Employee, "createdAt" | "id"> & { id?: string };
+// tenantId omitted: it is taken from the tenant context on save, never from the
+// caller, so a form post cannot move an employee into another tenant.
+export type EmployeeInput = Omit<Employee, "createdAt" | "id" | "tenantId"> & {
+  id?: string;
+};
 
-export function listEmployees() {
-  return db.select().from(employees).orderBy(asc(employees.familyName), asc(employees.firstName)).all();
+export async function listEmployees() {
+  return db
+    .select()
+    .from(employees)
+    .where(eq(employees.tenantId, tenantId()))
+    .orderBy(asc(employees.familyName), asc(employees.firstName));
 }
 
-export function getEmployee(id: string) {
-  return db.select().from(employees).where(eq(employees.id, id)).get() ?? null;
+export async function getEmployee(id: string) {
+  return first(
+    await db
+      .select()
+      .from(employees)
+      .where(and(eq(employees.tenantId, tenantId()), eq(employees.id, id)))
+      .limit(1),
+  );
 }
 
-export function saveEmployee(input: EmployeeInput) {
+export async function saveEmployee(input: EmployeeInput) {
+  const tid = tenantId();
   if (input.id) {
     const { id, ...rest } = input;
-    db.update(employees).set(rest).where(eq(employees.id, id)).run();
+    await db
+      .update(employees)
+      .set(rest)
+      .where(and(eq(employees.tenantId, tid), eq(employees.id, id)));
     return id;
   }
   const id = uid();
-  db.insert(employees).values({ id, ...input }).run();
+  await db.insert(employees).values({ id, ...input, tenantId: tid });
   return id;
 }
 
-export function setEmployeeStatus(id: string, status: "active" | "leaver", dateOfLeaving?: string | null) {
-  db.update(employees)
+export async function setEmployeeStatus(
+  id: string,
+  status: "active" | "leaver",
+  dateOfLeaving?: string | null,
+) {
+  await db
+    .update(employees)
     .set({ status, ...(dateOfLeaving !== undefined ? { dateOfLeaving } : {}) })
-    .where(eq(employees.id, id))
-    .run();
+    .where(and(eq(employees.tenantId, tenantId()), eq(employees.id, id)));
 }
 
 // ---- Statutory calc (driven by the RPN, fully overridable) ----------------
 
 type PriorTotals = { payForIncomeTax: number; incomeTaxPaid: number; payForUsc: number; uscPaid: number };
 
-function priorTotalsThisYear(employeeId: string, taxYear: number, periodNo: number): PriorTotals {
-  const rows = db
+async function priorTotalsThisYear(
+  employeeId: string,
+  taxYear: number,
+  periodNo: number,
+): Promise<PriorTotals> {
+  const tid = tenantId();
+  const rows = await db
     .select({
       payForIncomeTax: payslips.payForIncomeTax,
       incomeTaxPaid: payslips.incomeTaxPaid,
@@ -70,9 +98,17 @@ function priorTotalsThisYear(employeeId: string, taxYear: number, periodNo: numb
       uscPaid: payslips.uscPaid,
     })
     .from(payslips)
-    .innerJoin(payRuns, eq(payslips.payRunId, payRuns.id))
-    .where(and(eq(payslips.employeeId, employeeId), eq(payRuns.taxYear, taxYear), lt(payRuns.periodNo, periodNo)))
-    .all();
+    // Both sides scoped: filtering only payslips would let another tenant's
+    // pay run into the year-to-date figures that drive cumulative PAYE.
+    .innerJoin(payRuns, and(eq(payslips.payRunId, payRuns.id), eq(payRuns.tenantId, tid)))
+    .where(
+      and(
+        eq(payslips.tenantId, tid),
+        eq(payslips.employeeId, employeeId),
+        eq(payRuns.taxYear, taxYear),
+        lt(payRuns.periodNo, periodNo),
+      ),
+    );
   return rows.reduce(
     (a, r) => ({
       payForIncomeTax: a.payForIncomeTax + r.payForIncomeTax,
@@ -125,13 +161,13 @@ export type ComputedDeductions = {
 
 // Compute suggested deductions for a gross amount, given the employee's current
 // RPN. Returns figures that are then stored on the payslip and can be edited.
-export function computeDeductions(
+export async function computeDeductions(
   employee: Employee,
   taxYear: number,
   periodNo: number,
   grossPay: number,
   rpn: Rpn | null,
-): ComputedDeductions {
+): Promise<ComputedDeductions> {
   const pensionEmployee = round2(grossPay * (employee.pensionEmployeePct || 0));
   const payForIncomeTax = round2(grossPay - pensionEmployee);
   const payForUsc = round2(grossPay); // USC is on gross (incl. pension)
@@ -141,7 +177,7 @@ export function computeDeductions(
   const basis = rpn?.incomeTaxBasis || "Cumulative";
   const cumulative = basis.toLowerCase().startsWith("cum");
   const exclusionOrder = rpn?.exclusionOrder ?? false;
-  const prior = priorTotalsThisYear(employee.id, taxYear, periodNo);
+  const prior = await priorTotalsThisYear(employee.id, taxYear, periodNo);
 
   // --- PAYE ---
   const yearlyCredit = rpn?.yearlyTaxCredit ?? 0;
@@ -229,29 +265,69 @@ export function netOf(s: Pick<Payslip, "grossPay" | "pensionEmployee" | "incomeT
 
 // ---- Pay runs -------------------------------------------------------------
 
-export function listPayRuns() {
-  const runs = db.select().from(payRuns).orderBy(desc(payRuns.taxYear), desc(payRuns.periodNo)).all();
+export async function listPayRuns() {
+  const tid = tenantId();
+  const runs = await db
+    .select()
+    .from(payRuns)
+    .where(eq(payRuns.tenantId, tid))
+    .orderBy(desc(payRuns.taxYear), desc(payRuns.periodNo));
+  if (runs.length === 0) return [];
+  // One query for every run's slips rather than one per run: this was a
+  // free extra read per row on a local file and a round-trip each against Neon.
+  const slipRows = await db
+    .select()
+    .from(payslips)
+    .where(
+      and(
+        eq(payslips.tenantId, tid),
+        inArray(
+          payslips.payRunId,
+          runs.map((r) => r.id),
+        ),
+      ),
+    );
+  const byRun = new Map<string, typeof slipRows>();
+  for (const slip of slipRows) {
+    const list = byRun.get(slip.payRunId) ?? [];
+    list.push(slip);
+    byRun.set(slip.payRunId, list);
+  }
   return runs.map((r) => {
-    const slips = db.select().from(payslips).where(eq(payslips.payRunId, r.id)).all();
+    const slips = byRun.get(r.id) ?? [];
     const gross = round2(slips.reduce((s, p) => s + p.grossPay, 0));
     const net = round2(slips.reduce((s, p) => s + p.netPay, 0));
     return { ...r, employees: slips.length, gross, net };
   });
 }
 
-export function createPayRun(taxYear: number, periodNo: number, payDate: string) {
+export async function createPayRun(taxYear: number, periodNo: number, payDate: string) {
   const id = uid();
+  const tid = tenantId();
   const ref = `cashish-${taxYear}-M${String(periodNo).padStart(2, "0")}`;
-  db.insert(payRuns).values({ id, taxYear, periodNo, payDate, frequency: "Monthly", payrollRunReference: ref, status: "draft" }).run();
+  await db.insert(payRuns).values({
+    id,
+    tenantId: tid,
+    taxYear,
+    periodNo,
+    payDate,
+    frequency: "Monthly",
+    payrollRunReference: ref,
+    status: "draft",
+  });
 
   // Seed a payslip per active employee from their default gross + current RPN.
-  const emps = db.select().from(employees).where(eq(employees.status, "active")).all();
+  const emps = await db
+    .select()
+    .from(employees)
+    .where(and(eq(employees.tenantId, tid), eq(employees.status, "active")));
   for (const e of emps) {
-    const rpn = currentRpn(e.id, taxYear);
+    const rpn = await currentRpn(e.id, taxYear);
     const gross = round2(e.standardGross);
-    const d = computeDeductions(e, taxYear, periodNo, gross, rpn);
+    const d = await computeDeductions(e, taxYear, periodNo, gross, rpn);
     const slip = {
       id: uid(),
+      tenantId: tid,
       payRunId: id,
       employeeId: e.id,
       rpnNumber: d.rpnNumber,
@@ -281,16 +357,29 @@ export function createPayRun(taxYear: number, periodNo: number, payDate: string)
       notes: "",
     };
     slip.netPay = netOf(slip);
-    db.insert(payslips).values(slip).run();
+    await db.insert(payslips).values(slip);
   }
   return id;
 }
 
-export function getPayRun(id: string) {
-  const run = db.select().from(payRuns).where(eq(payRuns.id, id)).get();
+export async function getPayRun(id: string) {
+  const tid = tenantId();
+  const run = first(
+    await db
+      .select()
+      .from(payRuns)
+      .where(and(eq(payRuns.tenantId, tid), eq(payRuns.id, id)))
+      .limit(1),
+  );
   if (!run) return null;
-  const slips = db.select().from(payslips).where(eq(payslips.payRunId, id)).all();
-  const empMap = new Map(db.select().from(employees).all().map((e) => [e.id, e]));
+  const [slips, empRows] = await Promise.all([
+    db
+      .select()
+      .from(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.payRunId, id))),
+    db.select().from(employees).where(eq(employees.tenantId, tid)),
+  ]);
+  const empMap = new Map(empRows.map((e) => [e.id, e]));
   const withEmp = slips
     .map((s) => ({ ...s, employee: empMap.get(s.employeeId)! }))
     .filter((s) => s.employee)
@@ -298,34 +387,74 @@ export function getPayRun(id: string) {
   return { ...run, slips: withEmp };
 }
 
-export function getPayslip(id: string) {
-  const slip = db.select().from(payslips).where(eq(payslips.id, id)).get();
+export async function getPayslip(id: string) {
+  const tid = tenantId();
+  const slip = first(
+    await db
+      .select()
+      .from(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.id, id)))
+      .limit(1),
+  );
   if (!slip) return null;
-  const employee = getEmployee(slip.employeeId);
-  const run = db.select().from(payRuns).where(eq(payRuns.id, slip.payRunId)).get();
+  const [employee, run] = await Promise.all([
+    getEmployee(slip.employeeId),
+    db
+      .select()
+      .from(payRuns)
+      .where(and(eq(payRuns.tenantId, tid), eq(payRuns.id, slip.payRunId)))
+      .limit(1)
+      .then(first),
+  ]);
   return { ...slip, employee, run };
 }
 
 // Apply edits to a payslip and recompute net.
-export function updatePayslip(id: string, patch: Partial<Payslip>) {
-  const current = db.select().from(payslips).where(eq(payslips.id, id)).get();
+export async function updatePayslip(id: string, patch: Partial<Payslip>) {
+  const tid = tenantId();
+  const current = first(
+    await db
+      .select()
+      .from(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.id, id)))
+      .limit(1),
+  );
   if (!current) return;
   const merged = { ...current, ...patch };
   merged.netPay = netOf(merged);
-  const { id: _omit, ...rest } = merged;
-  db.update(payslips).set(rest).where(eq(payslips.id, id)).run();
+  // tenantId is stripped alongside id: neither is ever a patchable field, and
+  // letting one through would move a payslip between tenants.
+  const { id: _omitId, tenantId: _omitTenant, ...rest } = merged;
+  await db
+    .update(payslips)
+    .set(rest)
+    .where(and(eq(payslips.tenantId, tid), eq(payslips.id, id)));
 }
 
 // Re-run the RPN-driven calc for a slip's current gross (the "recompute" button).
-export function recomputePayslip(id: string) {
-  const slip = db.select().from(payslips).where(eq(payslips.id, id)).get();
+export async function recomputePayslip(id: string) {
+  const tid = tenantId();
+  const slip = first(
+    await db
+      .select()
+      .from(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.id, id)))
+      .limit(1),
+  );
   if (!slip) return;
-  const run = db.select().from(payRuns).where(eq(payRuns.id, slip.payRunId)).get();
-  const emp = getEmployee(slip.employeeId);
+  const [run, emp] = await Promise.all([
+    db
+      .select()
+      .from(payRuns)
+      .where(and(eq(payRuns.tenantId, tid), eq(payRuns.id, slip.payRunId)))
+      .limit(1)
+      .then(first),
+    getEmployee(slip.employeeId),
+  ]);
   if (!run || !emp) return;
-  const rpn = currentRpn(emp.id, run.taxYear);
-  const d = computeDeductions(emp, run.taxYear, run.periodNo, slip.grossPay, rpn);
-  updatePayslip(id, {
+  const rpn = await currentRpn(emp.id, run.taxYear);
+  const d = await computeDeductions(emp, run.taxYear, run.periodNo, slip.grossPay, rpn);
+  await updatePayslip(id, {
     rpnNumber: d.rpnNumber,
     incomeTaxBasis: d.incomeTaxBasis,
     exclusionOrder: d.exclusionOrder,
@@ -347,14 +476,20 @@ export function recomputePayslip(id: string) {
   });
 }
 
-export function setPayRunStatus(id: string, status: "draft" | "finalised") {
-  db.update(payRuns).set({ status }).where(eq(payRuns.id, id)).run();
+export async function setPayRunStatus(id: string, status: "draft" | "finalised") {
+  await db
+    .update(payRuns)
+    .set({ status })
+    .where(and(eq(payRuns.tenantId, tenantId()), eq(payRuns.id, id)));
 }
 
-export function deletePayRun(id: string) {
-  db.transaction((trx) => {
-    trx.delete(payslips).where(eq(payslips.payRunId, id)).run();
-    trx.delete(payRuns).where(eq(payRuns.id, id)).run();
+export async function deletePayRun(id: string) {
+  const tid = tenantId();
+  await db.transaction(async (trx) => {
+    await trx
+      .delete(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.payRunId, id)));
+    await trx.delete(payRuns).where(and(eq(payRuns.tenantId, tid), eq(payRuns.id, id)));
   });
 }
 
@@ -363,10 +498,16 @@ export function deletePayRun(id: string) {
 // data-items spec. Validate against ROS before filing live — this is a working
 // figure, not a guarantee of a successful submission.
 
-export function buildPsr(payRunId: string, softwareVersion: string) {
-  const run = getPayRun(payRunId);
+export async function buildPsr(payRunId: string, softwareVersion: string) {
+  const run = await getPayRun(payRunId);
   if (!run) return null;
-  const s = db.select().from(settings).where(eq(settings.id, 1)).get();
+  const s = first(
+    await db
+      .select()
+      .from(settings)
+      .where(eq(settings.tenantId, tenantId()))
+      .limit(1),
+  );
 
   const lineItems = run.slips.map((slip, i) => {
     const e = slip.employee;

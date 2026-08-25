@@ -274,11 +274,24 @@ Two things reduce the surface, both cheap because this code is being rewritten a
 
 ## 5. Data layer
 
+### Amendment, 2026-08-25 (implementation): `node-postgres`, not `neon-serverless`
+
+The design specified `drizzle-orm/neon-serverless`. Changed during implementation to
+**`drizzle-orm/node-postgres`** (the `pg` driver), because `@neondatabase/serverless`
+speaks to Neon over WebSockets and cannot reach a plain local Postgres without
+standing up a WebSocket proxy — which would have meant a different driver in dev than
+in production, defeating decision #7 ("one dialect in dev, test and prod").
+
+`pg` connects over standard TCP+TLS to Neon's pooled endpoint and to local Postgres
+identically, and supports real interactive transactions. Vercel Fluid Compute keeps
+instances alive across requests, so a module-scoped pool does not cause a
+connection storm. Strictly better for this codebase; nothing else in the design changes.
+
 `src/db/client.ts` is rewritten:
 
 ```ts
-import { Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
 // Module scope: Fluid Compute reuses instances across concurrent requests,

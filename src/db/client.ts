@@ -1,55 +1,63 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
-import { applySchema, SCHEMA_VERSION } from "./migrate";
-import { seedInto } from "./seed";
 
 // ---------------------------------------------------------------------------
 // Single point of DB coupling. The rest of the app imports `db` and `schema`
-// only. To move off SQLite later, swap this file for the matching drizzle
-// driver (e.g. drizzle-orm/postgres-js) and update drizzle.config.ts — the
-// query code in src/lib/* is written against the portable drizzle query API.
+// only.
 //
-// Schema + seed run once per process on connection open. One connection per
-// process avoids intra-process locking; busy_timeout makes cross-process
-// access (e.g. parallel build workers) wait rather than throw SQLITE_BUSY.
+// `pg` over TCP+TLS rather than @neondatabase/serverless: the same driver then
+// reaches Neon's pooled endpoint in production and a plain Postgres container
+// in dev and test, so there is exactly one dialect and one driver everywhere.
+// (neon-serverless speaks WebSockets and needs a proxy to reach local Postgres.)
+//
+// Schema is applied by migrations (`npm run db:migrate`), never at request time.
+// Seeding is per tenant, at tenant creation — see seedTenant().
+//
+// The pool is module-scoped: Vercel Fluid Compute reuses instances across
+// concurrent requests, so this is created once per instance, not per request.
 // ---------------------------------------------------------------------------
 
-const DB_PATH = process.env.DATABASE_URL ?? "./cashish.db";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is not set. Local dev expects a Postgres connection string, " +
+      "e.g. postgres://cashish:cashish@localhost:5470/cashish_dev",
+  );
+}
+// Bound to a const the compiler knows is a string; the guard above does not
+// narrow process.env inside the closure below.
+const connectionString: string = DATABASE_URL;
 
 declare global {
   // eslint-disable-next-line no-var
-  var __cashish_db__: ReturnType<typeof createDb> | undefined;
+  var __cashish_pool__: Pool | undefined;
 }
 
-function createDb() {
-  const sqlite = new Database(DB_PATH);
-  // TRUNCATE (not WAL): single-user app, and WAL's -wal/-shm sidecars cause
-  // cross-process delete races (SQLITE_IOERR_DELETE_NOENT) under `next build`'s
-  // parallel workers. TRUNCATE keeps a single rollback journal, truncated not
-  // deleted, and read-only workers create no journal at all.
-  sqlite.pragma("journal_mode = TRUNCATE");
-  sqlite.pragma("busy_timeout = 10000");
-  sqlite.pragma("foreign_keys = ON");
-
-  // Migrations are gated on PRAGMA user_version. Existing databases re-run the
-  // (idempotent, IF-NOT-EXISTS) DDL once when SCHEMA_VERSION bumps, picking up
-  // new tables; already-migrated connections skip straight past and never
-  // contend for the write lock — important under parallel build workers.
-  const version = Number(sqlite.pragma("user_version", { simple: true }));
-  if (version < SCHEMA_VERSION) {
-    applySchema(sqlite);
-    sqlite.pragma(`user_version = ${SCHEMA_VERSION}`);
-  }
-  const d = drizzle(sqlite, { schema });
-  const seeded =
-    (sqlite.prepare("SELECT COUNT(*) AS n FROM vat_rates").get() as { n: number })
-      .n > 0;
-  if (!seeded) seedInto(d);
-  return d;
+function createPool() {
+  return new Pool({
+    connectionString,
+    // Neon terminates idle connections; keep the pool small and let it recycle.
+    max: 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+    // Neon requires TLS; a local container does not offer it.
+    ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: true },
+  });
 }
 
-export const db = global.__cashish_db__ ?? createDb();
-if (process.env.NODE_ENV !== "production") global.__cashish_db__ = db;
+// Reused across HMR reloads in dev so `next dev` does not leak a pool per edit.
+const pool = global.__cashish_pool__ ?? createPool();
+if (process.env.NODE_ENV !== "production") global.__cashish_pool__ = pool;
 
-export { schema };
+export const db = drizzle(pool, { schema });
+
+/**
+ * Replaces better-sqlite3's `.get()`, which node-postgres has no equivalent for.
+ * Always pair with `.limit(1)` at the call site so the database does the work.
+ */
+export function first<T>(rows: T[]): T | null {
+  return rows[0] ?? null;
+}
+export type Db = typeof db;
+export { pool, schema };

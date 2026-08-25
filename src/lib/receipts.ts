@@ -1,21 +1,17 @@
 import { db, schema } from "@/db/client";
-import { eq, inArray, sql } from "drizzle-orm";
+import { tenantId } from "@/db/context";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { extname } from "node:path";
 import { uid } from "./id";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
-import { join, extname } from "path";
+import { putBlob, getBlob, deleteBlob } from "./storage";
 
 const { receipts } = schema;
 
-// Blobs live on disk (data/receipts/), not in SQLite — keeps the DB small and
-// lets you browse/back-up receipts directly. Only metadata + a relative path is
-// stored in the receipts table. The desktop shell points CASHISH_DATA_DIR at
-// its writable userData dir; on the web/CLI it defaults to the project root.
-const DATA_ROOT = process.env.CASHISH_DATA_DIR ?? process.cwd();
-const RECEIPTS_DIR = join(DATA_ROOT, "data", "receipts");
+// Receipt metadata lives in Postgres; the bytes live in blob storage (see
+// storage.ts). `storage_path` holds the blob pathname, namespaced per tenant so
+// one tenant's key can never address another's file.
 
-function ensureDir() {
-  if (!existsSync(RECEIPTS_DIR)) mkdirSync(RECEIPTS_DIR, { recursive: true });
-}
+const ofTenant = () => eq(receipts.tenantId, tenantId());
 
 export const ALLOWED_MIME = [
   "image/png",
@@ -29,60 +25,70 @@ export async function saveReceipt(
   transactionId: string,
   file: { name: string; type: string; bytes: Buffer },
 ) {
-  ensureDir();
+  const tid = tenantId();
   const id = uid();
   const ext = extname(file.name) || mimeExt(file.type);
-  const rel = join("data", "receipts", `${id}${ext}`);
-  writeFileSync(join(DATA_ROOT, rel), file.bytes);
-  db.insert(receipts)
-    .values({
-      id,
-      transactionId,
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.bytes.length,
-      storagePath: rel,
-    })
-    .run();
+  const pathname = `tenants/${tid}/receipts/${id}${ext}`;
+  const stored = await putBlob(
+    pathname,
+    file.bytes,
+    file.type || "application/octet-stream",
+  );
+  await db.insert(receipts).values({
+    id,
+    tenantId: tid,
+    transactionId,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.bytes.length,
+    storagePath: stored.pathname,
+  });
   return id;
 }
 
-export function listReceiptsFor(transactionId: string) {
-  return db.select().from(receipts).where(eq(receipts.transactionId, transactionId)).all();
+export async function listReceiptsFor(transactionId: string) {
+  return db
+    .select()
+    .from(receipts)
+    .where(and(ofTenant(), eq(receipts.transactionId, transactionId)));
 }
 
 // Map of transactionId -> count, for showing the paperclip badge in the ledger.
-export function receiptCounts(transactionIds: string[]): Record<string, number> {
+export async function receiptCounts(
+  transactionIds: string[],
+): Promise<Record<string, number>> {
   if (transactionIds.length === 0) return {};
-  const rows = db
+  const rows = await db
     .select({ tx: receipts.transactionId, n: sql<number>`COUNT(*)` })
     .from(receipts)
-    .where(inArray(receipts.transactionId, transactionIds))
-    .groupBy(receipts.transactionId)
-    .all();
+    .where(and(ofTenant(), inArray(receipts.transactionId, transactionIds)))
+    .groupBy(receipts.transactionId);
   const out: Record<string, number> = {};
+  // count() comes back from Postgres as bigint, which node-postgres hands over
+  // as a string — Number() or the badge renders "12" for one receipt plus two.
   for (const r of rows) out[r.tx] = Number(r.n);
   return out;
 }
 
-export function getReceipt(id: string) {
-  const r = db.select().from(receipts).where(eq(receipts.id, id)).get();
-  if (!r) return null;
-  const abs = join(DATA_ROOT, r.storagePath);
-  if (!existsSync(abs)) return { meta: r, bytes: null as Buffer | null };
-  return { meta: r, bytes: readFileSync(abs) };
+export async function getReceipt(id: string) {
+  const [meta] = await db
+    .select()
+    .from(receipts)
+    .where(and(ofTenant(), eq(receipts.id, id)))
+    .limit(1);
+  if (!meta) return null;
+  return { meta, bytes: await getBlob(meta.storagePath) };
 }
 
-export function deleteReceipt(id: string) {
-  const r = db.select().from(receipts).where(eq(receipts.id, id)).get();
-  if (!r) return;
-  const abs = join(DATA_ROOT, r.storagePath);
-  try {
-    if (existsSync(abs)) rmSync(abs);
-  } catch {
-    // best-effort; metadata removal still proceeds
-  }
-  db.delete(receipts).where(eq(receipts.id, id)).run();
+export async function deleteReceipt(id: string) {
+  const [meta] = await db
+    .select()
+    .from(receipts)
+    .where(and(ofTenant(), eq(receipts.id, id)))
+    .limit(1);
+  if (!meta) return;
+  await deleteBlob(meta.storagePath);
+  await db.delete(receipts).where(and(ofTenant(), eq(receipts.id, id)));
 }
 
 function mimeExt(mime: string): string {

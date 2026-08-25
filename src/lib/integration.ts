@@ -1,5 +1,6 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
-import { db, schema } from "@/db/client";
+import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { db, first, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
 import { round2 } from "./format";
 import { listCustomers } from "./customers";
 import { notExcluded } from "./transactions";
@@ -73,10 +74,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 const daysBetween = (from: string, to: string): number =>
   Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 
-export function buildIntegrationSummary(asOf = today()): IntegrationSummary {
-  const customerRows = listCustomers({ includeArchived: true });
-  const invoiceRows = db.select().from(invoices).orderBy(desc(invoices.issueDate)).all();
-  const paymentRows = db.select().from(payments).all();
+export async function buildIntegrationSummary(asOf = today()): Promise<IntegrationSummary> {
+  const tid = tenantId();
+  const [customerRows, invoiceRows, paymentRows] = await Promise.all([
+    listCustomers({ includeArchived: true }),
+    db.select().from(invoices).where(eq(invoices.tenantId, tid)).orderBy(desc(invoices.issueDate)),
+    db.select().from(payments).where(eq(payments.tenantId, tid)),
+  ]);
 
   const paymentsByInvoice = new Map<string, { date: string; amount: number }[]>();
   for (const payment of paymentRows) {
@@ -127,11 +131,11 @@ export function buildIntegrationSummary(asOf = today()): IntegrationSummary {
   });
 
   const names = new Map(customerRows.map((customer) => [customer.id, customer.name]));
-  const recurring: RecurringSummary[] = db
+  const recurringRows = await db
     .select()
     .from(recurringInvoices)
-    .all()
-    .map((row) => ({
+    .where(eq(recurringInvoices.tenantId, tid));
+  const recurring: RecurringSummary[] = recurringRows.map((row) => ({
       id: row.id,
       customerId: row.customerId,
       customerName: names.get(row.customerId) ?? "(unknown customer)",
@@ -142,34 +146,35 @@ export function buildIntegrationSummary(asOf = today()): IntegrationSummary {
       endDate: row.endDate ?? null,
       lastInvoiceDate:
         invoiceRows.find((invoice) => invoice.customerId === row.customerId)?.issueDate ?? null,
-    }));
+  }));
 
-  const linkedTxIds = new Set(
+  const [linkedRows, inflowRows, lastTx, uncategorised] = await Promise.all([
     db
       .select({ transactionId: payments.transactionId })
       .from(payments)
-      .where(isNotNull(payments.transactionId))
-      .all()
-      .map((row) => row.transactionId as string),
-  );
-  const inflows = db
-    .select()
-    .from(transactions)
-    .where(and(sql`${transactions.amount} > 0`, notExcluded()))
-    .all()
-    .filter((tx) => !linkedTxIds.has(tx.id));
-  const lastTx = db
-    .select({ date: transactions.bookedDate })
-    .from(transactions)
-    .where(notExcluded())
-    .orderBy(desc(transactions.bookedDate))
-    .limit(1)
-    .get();
-  const uncategorised = db
-    .select({ n: sql<number>`count(*)` })
-    .from(transactions)
-    .where(and(sql`${transactions.categoryId} IS NULL`, notExcluded()))
-    .get();
+      .where(and(eq(payments.tenantId, tid), isNotNull(payments.transactionId))),
+    db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.tenantId, tid), gt(transactions.amount, 0), notExcluded())),
+    db
+      .select({ date: transactions.bookedDate })
+      .from(transactions)
+      .where(and(eq(transactions.tenantId, tid), notExcluded()))
+      .orderBy(desc(transactions.bookedDate))
+      .limit(1)
+      .then(first),
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(transactions)
+      .where(
+        and(eq(transactions.tenantId, tid), isNull(transactions.categoryId), notExcluded()),
+      )
+      .limit(1)
+      .then(first),
+  ]);
+  const linkedTxIds = new Set(linkedRows.map((row) => row.transactionId as string));
+  const inflows = inflowRows.filter((tx) => !linkedTxIds.has(tx.id));
 
   return {
     version: SUMMARY_VERSION,

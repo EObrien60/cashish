@@ -1,4 +1,5 @@
-import { db, schema } from "@/db/client";
+import { db, first, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { uid } from "./id";
 import { notExcluded } from "./transactions";
@@ -18,42 +19,60 @@ export type RuleInput = {
   enabled: boolean;
 };
 
-export function listRules() {
-  return db.select().from(categoryRules).orderBy(asc(categoryRules.sortOrder)).all();
+const ofTenant = () => eq(categoryRules.tenantId, tenantId());
+
+export async function listRules() {
+  return db
+    .select()
+    .from(categoryRules)
+    .where(ofTenant())
+    .orderBy(asc(categoryRules.sortOrder));
 }
 
-export function saveRule(input: RuleInput) {
+export async function saveRule(input: RuleInput) {
   if (input.id) {
     const { id, ...rest } = input;
-    db.update(categoryRules).set(rest).where(eq(categoryRules.id, id)).run();
+    await db
+      .update(categoryRules)
+      .set(rest)
+      .where(and(ofTenant(), eq(categoryRules.id, id)));
     return;
   }
-  const maxOrder =
-    (db
+  const maxRow = first(
+    await db
       .select({ m: sql<number>`COALESCE(MAX(${categoryRules.sortOrder}), -1)` })
       .from(categoryRules)
-      .get()?.m ?? -1) + 1;
+      .where(ofTenant())
+      .limit(1),
+  );
+  const maxOrder = Number(maxRow?.m ?? -1) + 1;
   const { id: _ignore, ...rest } = input;
-  db.insert(categoryRules)
-    .values({ id: uid(), sortOrder: maxOrder, ...rest })
-    .run();
+  await db
+    .insert(categoryRules)
+    .values({ id: uid(), tenantId: tenantId(), sortOrder: maxOrder, ...rest });
 }
 
-export function deleteRule(id: string) {
-  db.delete(categoryRules).where(eq(categoryRules.id, id)).run();
+export async function deleteRule(id: string) {
+  await db.delete(categoryRules).where(and(ofTenant(), eq(categoryRules.id, id)));
 }
 
-export function reorderRule(id: string, direction: "up" | "down") {
-  const rules = listRules();
+export async function reorderRule(id: string, direction: "up" | "down") {
+  const rules = await listRules();
   const idx = rules.findIndex((r) => r.id === id);
   if (idx < 0) return;
   const swapWith = direction === "up" ? idx - 1 : idx + 1;
   if (swapWith < 0 || swapWith >= rules.length) return;
   const a = rules[idx];
   const b = rules[swapWith];
-  db.transaction((trx) => {
-    trx.update(categoryRules).set({ sortOrder: b.sortOrder }).where(eq(categoryRules.id, a.id)).run();
-    trx.update(categoryRules).set({ sortOrder: a.sortOrder }).where(eq(categoryRules.id, b.id)).run();
+  await db.transaction(async (trx) => {
+    await trx
+      .update(categoryRules)
+      .set({ sortOrder: b.sortOrder })
+      .where(and(ofTenant(), eq(categoryRules.id, a.id)));
+    await trx
+      .update(categoryRules)
+      .set({ sortOrder: a.sortOrder })
+      .where(and(ofTenant(), eq(categoryRules.id, b.id)));
   });
 }
 
@@ -117,11 +136,12 @@ export type ApplyResult = {
 
 // Apply rules to a set of transactions. By default only touches uncategorised
 // ones (so manual categorisations are never overwritten).
-export function applyRulesToTransactions(
+export async function applyRulesToTransactions(
   txs: Transaction[],
   opts: { onlyUncategorized?: boolean } = { onlyUncategorized: true },
-): ApplyResult {
-  const rules = listRules().filter((r) => r.enabled);
+): Promise<ApplyResult> {
+  const tid = tenantId();
+  const rules = (await listRules()).filter((r) => r.enabled);
   if (rules.length === 0) return { matched: 0, updated: 0, recategorised: 0 };
 
   let matched = 0;
@@ -129,7 +149,7 @@ export function applyRulesToTransactions(
   let recategorised = 0;
   const applyCounts = new Map<string, number>();
 
-  db.transaction((trx) => {
+  await db.transaction(async (trx) => {
     for (const t of txs) {
       if (opts.onlyUncategorized && t.categoryId) continue;
       // An excluded transaction is out of the books, so no rule gets to categorise it.
@@ -140,23 +160,24 @@ export function applyRulesToTransactions(
       const before = t.categoryId ?? null;
       const after = rule.categoryId ?? null;
       if (before !== null && before !== after) recategorised++;
-      trx
+      await trx
         .update(transactions)
         .set({
           categoryId: rule.categoryId ?? null,
           vatRateId: rule.vatRateId ?? null,
         })
-        .where(eq(transactions.id, t.id))
-        .run();
+        .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
       updated++;
       applyCounts.set(rule.id, (applyCounts.get(rule.id) ?? 0) + 1);
     }
     for (const [ruleId, n] of applyCounts) {
-      trx
+      // The only raw SQL left in the query layer: an atomic increment, with no
+      // table reference of its own to scope. The surrounding where() carries the
+      // tenant filter.
+      await trx
         .update(categoryRules)
         .set({ timesApplied: sql`${categoryRules.timesApplied} + ${n}` })
-        .where(eq(categoryRules.id, ruleId))
-        .run();
+        .where(and(eq(categoryRules.tenantId, tid), eq(categoryRules.id, ruleId)));
     }
   });
 
@@ -164,12 +185,17 @@ export function applyRulesToTransactions(
 }
 
 // Sweep all currently-uncategorised transactions.
-export function applyRulesToUncategorized(): ApplyResult {
-  const txs = db
+export async function applyRulesToUncategorized(): Promise<ApplyResult> {
+  const txs = await db
     .select()
     .from(transactions)
-    .where(and(isNull(transactions.categoryId), notExcluded()))
-    .all();
+    .where(
+      and(
+        eq(transactions.tenantId, tenantId()),
+        isNull(transactions.categoryId),
+        notExcluded(),
+      ),
+    );
   return applyRulesToTransactions(txs, { onlyUncategorized: true });
 }
 
@@ -182,7 +208,10 @@ export function applyRulesToUncategorized(): ApplyResult {
  * actually matches are touched — a category set by hand that no rule has an opinion about
  * survives untouched, and excluded rows are skipped entirely.
  */
-export function applyRulesToAll(): ApplyResult {
-  const txs = db.select().from(transactions).where(notExcluded()).all();
+export async function applyRulesToAll(): Promise<ApplyResult> {
+  const txs = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.tenantId, tenantId()), notExcluded()));
   return applyRulesToTransactions(txs, { onlyUncategorized: false });
 }

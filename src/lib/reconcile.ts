@@ -1,5 +1,6 @@
-import { and, desc, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
 import { round2 } from "./format";
 import { listCustomers } from "./customers";
 import { notExcluded } from "./transactions";
@@ -41,25 +42,31 @@ export type InflowMatch = {
   candidates: MatchCandidate[];
 };
 
-const OPEN_STATUSES = ["draft", "sent", "partial"];
+const OPEN_STATUSES: string[] = ["draft", "sent", "partial"];
 
 /** Bank inflows with no payment linked to them yet. */
-export function unmatchedInflows(options: { from?: string; to?: string; minAmount?: number } = {}) {
+export async function unmatchedInflows(
+  options: { from?: string; to?: string; minAmount?: number } = {},
+) {
   const min = options.minAmount ?? 0.01;
-  const linked = db
-    .select({ transactionId: payments.transactionId })
-    .from(payments)
-    .where(isNotNull(payments.transactionId))
-    .all()
-    .map((row) => row.transactionId as string);
+  const tid = tenantId();
+  const linked = new Set(
+    (
+      await db
+        .select({ transactionId: payments.transactionId })
+        .from(payments)
+        .where(and(eq(payments.tenantId, tid), isNotNull(payments.transactionId)))
+    ).map((row) => row.transactionId as string),
+  );
 
-  return db
+  const rows = await db
     .select()
     .from(transactions)
-    .where(and(sql`${transactions.amount} >= ${min}`, notExcluded()))
-    .orderBy(desc(transactions.bookedDate))
-    .all()
-    .filter((tx) => !linked.includes(tx.id))
+    .where(and(eq(transactions.tenantId, tid), gte(transactions.amount, min), notExcluded()))
+    .orderBy(desc(transactions.bookedDate));
+
+  return rows
+    .filter((tx) => !linked.has(tx.id))
     .filter((tx) => (options.from ? tx.bookedDate >= options.from : true))
     .filter((tx) => (options.to ? tx.bookedDate <= options.to : true))
     .map((tx) => ({
@@ -73,14 +80,16 @@ export function unmatchedInflows(options: { from?: string; to?: string; minAmoun
 }
 
 /** Invoices still owed money, with what is outstanding on each. */
-export function openInvoices() {
-  const customers = new Map(listCustomers({ includeArchived: true }).map((c) => [c.id, c.name]));
-  return db
+export async function openInvoices() {
+  const customers = new Map(
+    (await listCustomers({ includeArchived: true })).map((c) => [c.id, c.name]),
+  );
+  const rows = await db
     .select()
     .from(invoices)
-    .where(sql`${invoices.status} in ('draft','sent','partial')`)
-    .orderBy(desc(invoices.issueDate))
-    .all()
+    .where(and(eq(invoices.tenantId, tenantId()), inArray(invoices.status, OPEN_STATUSES)))
+    .orderBy(desc(invoices.issueDate));
+  return rows
     .map((invoice) => ({
       invoiceId: invoice.id,
       number: invoice.number,
@@ -112,12 +121,11 @@ const mentions = (haystack: string, name: string): boolean => {
  * Deliberately conservative: amount is the strong signal, the counterparty name
  * only raises confidence. Nothing is matched automatically — the caller decides.
  */
-export function suggestMatches(
+export async function suggestMatches(
   options: { from?: string; to?: string; minAmount?: number; tolerance?: number } = {},
-): InflowMatch[] {
+): Promise<InflowMatch[]> {
   const tolerance = options.tolerance ?? 0.02;
-  const open = openInvoices();
-  const inflows = unmatchedInflows(options);
+  const [open, inflows] = await Promise.all([openInvoices(), unmatchedInflows(options)]);
   const rank = { high: 0, medium: 1, low: 2 } as const;
 
   /* Score every inflow against every open invoice. */
@@ -194,13 +202,13 @@ export type ReconcileReport = {
   needsDecision: InflowMatch[];
   /** Inflows with no candidate at all — most likely invoiced in the old system. */
   needsInvoice: Inflow[];
-  openInvoicesAwaitingPayment: ReturnType<typeof openInvoices>;
+  openInvoicesAwaitingPayment: Awaited<ReturnType<typeof openInvoices>>;
 };
 
-export function reconcileReport(
+export async function reconcileReport(
   options: { from?: string; to?: string; minAmount?: number } = {},
-): ReconcileReport {
-  const matches = suggestMatches(options);
+): Promise<ReconcileReport> {
+  const matches = await suggestMatches(options);
   const confident = matches.filter((m) => m.candidates[0]?.confidence === "high");
   const ambiguous = matches.filter(
     (m) => m.candidates.length > 0 && m.candidates[0]?.confidence !== "high",
@@ -213,6 +221,6 @@ export function reconcileReport(
     confidentMatches: confident,
     needsDecision: ambiguous,
     needsInvoice: orphan,
-    openInvoicesAwaitingPayment: openInvoices(),
+    openInvoicesAwaitingPayment: await openInvoices(),
   };
 }
