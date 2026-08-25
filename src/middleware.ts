@@ -20,6 +20,9 @@ import { SESSION_COOKIE } from "@/lib/session-cookie";
 // the session gate — the receipt and payroll routes use withTenant and are meant
 // to be browser-only.
 const PUBLIC_PREFIXES = [
+  // The marketing site and the way in.
+  "/pricing",
+  "/register",
   "/login",
   "/accept-invite",
   "/api/mcp",
@@ -47,6 +50,9 @@ export function middleware(request: NextRequest) {
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return withPath();
   }
+  // "/" serves the marketing page to a visitor and the dashboard to a member,
+  // so it cannot be gated here — the page itself decides.
+  if (pathname === "/") return withPath();
   if (request.cookies.get(SESSION_COOKIE)?.value) return withPath();
 
   const login = new URL("/login", request.url);

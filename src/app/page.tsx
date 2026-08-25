@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/request-context";
+import { currentSession } from "@/lib/session";
+import { Landing } from "@/components/marketing/Landing";
 import { dashboardStats } from "@/lib/reports";
 import { resolvePeriod } from "@/lib/period";
 import { money } from "@/lib/format";
@@ -15,6 +17,10 @@ export default async function Dashboard({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
+  // A visitor gets the marketing page; a member gets their dashboard. Same URL,
+  // because sending signed-in people to a landing page is its own small insult.
+  if (!(await currentSession())) return <Landing />;
+
   return withTenant(async () => {
     const sp = await searchParams;
     const period = resolvePeriod(sp.period);

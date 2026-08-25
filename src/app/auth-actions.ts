@@ -62,6 +62,54 @@ export async function switchTenant(tenantId: string) {
   revalidatePath("/", "layout");
 }
 
+// ---- Registration ----------------------------------------------------------
+
+/**
+ * Signs someone up: a user, a business of their own, and they own it.
+ *
+ * This is the only route into cashish that does not require an existing member
+ * to let you in. Before it existed an account could only be created by running a
+ * script or accepting an invite, which is fine for one person and useless as a
+ * product.
+ *
+ * No card is taken. There is no payment integration — see src/lib/marketing.ts.
+ */
+export async function register(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const businessName = String(formData.get("businessName") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (!businessName) return { error: "What is the business called?" };
+  if (!email || !email.includes("@")) return { error: "That does not look like an email address." };
+  if (password.length < 12) {
+    return { error: "Choose a password of at least 12 characters." };
+  }
+
+  // One account per address. Saying so is not a disclosure worth avoiding here —
+  // whoever is typing already knows whether they have an account, and a vague
+  // error would just send them round in circles.
+  if (await findUserByEmail(email)) {
+    return { error: "There is already an account with that address. Sign in instead." };
+  }
+
+  const userId = await createUser({ email, password, name });
+
+  const base =
+    businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "business";
+  let slug = base;
+  for (let n = 2; await findTenantBySlug(slug); n += 1) slug = `${base}-${n}`;
+
+  const tenantId = await createTenant({ slug, name: businessName });
+  await addMembership(userId, tenantId, "owner");
+  await setSessionCookie({ uid: userId, tid: tenantId });
+  redirect("/?welcome=1");
+}
+
 // ---- Businesses ------------------------------------------------------------
 
 /**
