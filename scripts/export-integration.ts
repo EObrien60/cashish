@@ -23,7 +23,7 @@ const flag = (name: string): string | undefined => {
 
 boot();
 
-const summary = buildIntegrationSummary(flag("asOf"));
+const summary = await buildIntegrationSummary(flag("asOf"));
 const out = resolve(flag("out") ?? "./cashish-summary.json");
 writeFileSync(out, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 

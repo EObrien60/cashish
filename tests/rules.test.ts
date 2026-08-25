@@ -35,7 +35,7 @@ boot();
 
 const reset = () => {
   db.delete(schema.transactions).run();
-  for (const rule of listRules()) deleteRule(rule.id);
+  for (const rule of await listRules()) await deleteRule(rule.id);
 };
 
 const addTx = (description: string, categoryId: string | null = null) => {
@@ -47,13 +47,13 @@ const addTx = (description: string, categoryId: string | null = null) => {
 };
 
 const categoryOf = (id: string) =>
-  db.select().from(schema.transactions).all().find((t) => t.id === id)?.categoryId ?? null;
+  db.select().from(schema.transactions).find((t) => t.id === id)?.categoryId ?? null;
 
 test("re-applying a corrected rule reaches transactions that already have a category", () => {
   reset();
   // The scenario: a rule put these under the wrong category, and the rule is now fixed.
   const wrong = addTx("HETZNER ONLINE GMBH", "cat-misc");
-  saveRule({
+  await saveRule({
     name: "Hetzner",
     matchField: "description",
     matchType: "contains",
@@ -65,10 +65,10 @@ test("re-applying a corrected rule reaches transactions that already have a cate
   });
 
   // Applying to uncategorised only leaves the mistake in place — which is the bug.
-  applyRulesToUncategorized();
+  await applyRulesToUncategorized();
   assert.equal(categoryOf(wrong), "cat-misc", "an already-categorised row is not reached");
 
-  const result = applyRulesToAll();
+  const result = await applyRulesToAll();
   assert.equal(categoryOf(wrong), "cat-software", "re-applying must correct it");
   assert.equal(result.updated, 1);
   assert.equal(result.recategorised, 1, "reported separately, because it overwrote something");
@@ -79,7 +79,7 @@ test("a category no rule matches is left alone", () => {
   // Categorised by hand, and no rule has an opinion about it. It must survive.
   const manual = addTx("SOMETHING ONLY A HUMAN UNDERSTOOD", "cat-professional");
   const ruled = addTx("HETZNER ONLINE GMBH");
-  saveRule({
+  await saveRule({
     name: "Hetzner",
     matchField: "description",
     matchType: "contains",
@@ -90,7 +90,7 @@ test("a category no rule matches is left alone", () => {
     enabled: true,
   });
 
-  const result = applyRulesToAll();
+  const result = await applyRulesToAll();
   assert.equal(categoryOf(manual), "cat-professional", "no rule matched it, so nothing touched it");
   assert.equal(categoryOf(ruled), "cat-software");
   assert.equal(result.updated, 1);
@@ -100,7 +100,7 @@ test("a category no rule matches is left alone", () => {
 test("a disabled rule stops claiming transactions", () => {
   reset();
   const tx = addTx("HETZNER ONLINE GMBH", "cat-software");
-  saveRule({
+  await saveRule({
     name: "Hetzner",
     matchField: "description",
     matchType: "contains",
@@ -111,7 +111,7 @@ test("a disabled rule stops claiming transactions", () => {
     enabled: false,
   });
 
-  const result = applyRulesToAll();
+  const result = await applyRulesToAll();
   assert.equal(result.updated, 0);
   assert.equal(categoryOf(tx), "cat-software", "disabling a rule does not clear what it set");
 });
@@ -120,11 +120,11 @@ test("a historic invoice keeps its own number and leaves the sequence alone", ()
   const { createInvoice, nextInvoiceNumber } = require("../src/lib/invoices") as typeof import("../src/lib/invoices");
   const { createCustomer } = require("../src/lib/customers") as typeof import("../src/lib/customers");
 
-  const { customer } = createCustomer({ name: `Numbering Test ${uid()}` });
-  const before = nextInvoiceNumber();
+  const { customer } = await createCustomer({ name: `Numbering Test ${uid()}` });
+  const before = await nextInvoiceNumber();
 
   // Copied in from another system: the number on the document the customer holds.
-  const historic = createInvoice({
+  const historic = await createInvoice({
     customerId: customer.id,
     number: "1010",
     status: "sent",
@@ -132,15 +132,15 @@ test("a historic invoice keeps its own number and leaves the sequence alone", ()
     lines: [{ description: "Contract work", quantity: 1, unitPrice: 5000, vatRateId: null, productId: null }],
   });
   assert.equal(historic?.number, "1010");
-  assert.equal(nextInvoiceNumber(), before, "importing history must not push the next number forward");
+  assert.equal(await nextInvoiceNumber(), before, "importing history must not push the next number forward");
 
   // A new invoice still takes the next in sequence.
-  const fresh = createInvoice({
+  const fresh = await createInvoice({
     customerId: customer.id,
     status: "draft",
     issueDate: "2026-08-24",
     lines: [{ description: "New work", quantity: 1, unitPrice: 100, vatRateId: null, productId: null }],
   });
   assert.equal(fresh?.number, before);
-  assert.notEqual(nextInvoiceNumber(), before, "and that one does consume it");
+  assert.notEqual(await nextInvoiceNumber(), before, "and that one does consume it");
 });

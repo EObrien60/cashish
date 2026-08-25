@@ -41,12 +41,12 @@ const inflow = (description: string, amount: number, bookedDate: string) => {
 
 test("identical repeat payments are matched one-to-one, not all to the same invoice", () => {
   reset();
-  const { customer } = createCustomer({ name: "Repeat Client" });
+  const { customer } = await createCustomer({ name: "Repeat Client" });
 
   // Five identical monthly invoices.
   const numbers = ["2001", "2002", "2003", "2004", "2005"];
   for (const [index, number] of numbers.entries()) {
-    createInvoice({
+    await createInvoice({
       customerId: customer.id,
       number,
       status: "sent",
@@ -59,7 +59,7 @@ test("identical repeat payments are matched one-to-one, not all to the same invo
   // Five identical payments arrive.
   for (let i = 0; i < 5; i++) inflow("From REPEAT CLIENT", 7000, `2026-0${i + 3}-15`);
 
-  const report = reconcileReport();
+  const report = await reconcileReport();
   assert.equal(report.confidentMatches.length, 5, "every payment should find a home");
 
   const claimed = report.confidentMatches.map((m) => m.candidates[0]?.number);
@@ -69,8 +69,8 @@ test("identical repeat payments are matched one-to-one, not all to the same invo
 
 test("a payment with nothing to match is reported as needing an invoice", () => {
   reset();
-  const { customer } = createCustomer({ name: "Known Client" });
-  createInvoice({
+  const { customer } = await createCustomer({ name: "Known Client" });
+  await createInvoice({
     customerId: customer.id,
     number: "3001",
     status: "sent",
@@ -80,7 +80,7 @@ test("a payment with nothing to match is reported as needing an invoice", () => 
   inflow("From KNOWN CLIENT", 500, "2026-05-10");
   inflow("From SOMEONE ELSE ENTIRELY", 12345.67, "2026-05-11");
 
-  const report = reconcileReport();
+  const report = await reconcileReport();
   assert.equal(report.confidentMatches.length, 1);
   assert.equal(report.needsInvoice.length, 1);
   assert.equal(report.needsInvoice[0]?.amount, 12345.67);
@@ -88,8 +88,8 @@ test("a payment with nothing to match is reported as needing an invoice", () => 
 
 test("one invoice cannot be claimed by two payments", () => {
   reset();
-  const { customer } = createCustomer({ name: "Single Invoice Client" });
-  createInvoice({
+  const { customer } = await createCustomer({ name: "Single Invoice Client" });
+  await createInvoice({
     customerId: customer.id,
     number: "4001",
     status: "sent",
@@ -100,7 +100,7 @@ test("one invoice cannot be claimed by two payments", () => {
   inflow("From SINGLE INVOICE CLIENT", 1000, "2026-06-10");
   inflow("From SINGLE INVOICE CLIENT", 1000, "2026-06-11");
 
-  const report = reconcileReport();
+  const report = await reconcileReport();
   assert.equal(report.confidentMatches.length, 1, "only one can claim it");
   const leftover = [...report.needsDecision, ...report.needsInvoice.map((t) => ({ transaction: t, candidates: [] }))];
   assert.equal(leftover.length, 1, "the other is left for a person to explain");

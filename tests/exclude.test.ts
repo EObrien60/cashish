@@ -42,27 +42,27 @@ test("an excluded transaction is counted nowhere", () => {
   const kept = addTx("REAL CLIENT PAYMENT", 1000, "cat-sales");
   const potTransfer = addTx("To VAT", -500, "cat-tax");
 
-  const before = profitAndLoss("2026-07-01", "2026-07-31");
+  const before = await profitAndLoss("2026-07-01", "2026-07-31");
   assert.equal(before.totalIncome, 1000);
   assert.equal(before.totalExpense, 500, "the transfer is counted as an expense to begin with");
 
-  setExcluded([potTransfer], true, "internal pot transfer, not an expense");
+  await setExcluded([potTransfer], true, "internal pot transfer, not an expense");
 
-  const after = profitAndLoss("2026-07-01", "2026-07-31");
+  const after = await profitAndLoss("2026-07-01", "2026-07-31");
   assert.equal(after.totalIncome, 1000, "income is untouched");
   assert.equal(after.totalExpense, 0, "the excluded transfer is out of the P&L");
   assert.equal(after.net, 1000);
 
   // Out of the list by default, and its own tab shows it.
-  assert.deepEqual(listTransactions().map((t) => t.id), [kept]);
-  assert.deepEqual(listTransactions({ excluded: "only" }).map((t) => t.id), [potTransfer]);
-  assert.equal(listTransactions({ excluded: "all" }).length, 2, "reconciling a statement needs every line");
+  assert.deepEqual(await listTransactions().map((t) => t.id), [kept]);
+  assert.deepEqual(await listTransactions({ excluded: "only" }).map((t) => t.id), [potTransfer]);
+  assert.equal(await listTransactions({ excluded: "all" }).length, 2, "reconciling a statement needs every line");
 
-  const counts = transactionCounts();
+  const counts = await transactionCounts();
   assert.deepEqual(counts, { included: 1, excluded: 1, uncategorised: 0 });
 
   // And excluding cleared the category, because it is out of the books entirely.
-  const row = listTransactions({ excluded: "only" })[0];
+  const row = await listTransactions({ excluded: "only" })[0];
   assert.equal(row?.categoryId, null);
   assert.equal(row?.excludedReason, "internal pot transfer, not an expense");
 });
@@ -71,13 +71,13 @@ test("an excluded inflow is not money waiting to be invoiced", () => {
   db.delete(schema.transactions).run();
   const own = addTx("From VAT", 700);
 
-  assert.equal(reconcileReport().unmatchedInflows, 1, "it looks like unexplained money at first");
-  assert.equal(buildIntegrationSummary("2026-08-24").bank.unmatchedInflowCount, 1);
+  assert.equal(await reconcileReport().unmatchedInflows, 1, "it looks like unexplained money at first");
+  assert.equal(await buildIntegrationSummary("2026-08-24").bank.unmatchedInflowCount, 1);
 
-  setExcluded([own], true, "money coming back from our own VAT pot");
+  await setExcluded([own], true, "money coming back from our own VAT pot");
 
-  assert.equal(reconcileReport().unmatchedInflows, 0, "not an inflow needing an invoice");
-  const summary = buildIntegrationSummary("2026-08-24");
+  assert.equal(await reconcileReport().unmatchedInflows, 0, "not an inflow needing an invoice");
+  const summary = await buildIntegrationSummary("2026-08-24");
   assert.equal(summary.bank.unmatchedInflowCount, 0, "and Lunar is not told about it either");
   assert.equal(summary.bank.unmatchedInflowTotal, 0);
 });
@@ -86,14 +86,14 @@ test("excluding is reversible and leaves the row in place", () => {
   db.delete(schema.transactions).run();
   const id = addTx("MAYBE A MISTAKE", -42);
 
-  setExcluded([id], true, "wrong card");
-  assert.equal(transactionCounts().excluded, 1);
+  await setExcluded([id], true, "wrong card");
+  assert.equal(await transactionCounts().excluded, 1);
 
-  setExcluded([id], false);
-  const counts = transactionCounts();
+  await setExcluded([id], false);
+  const counts = await transactionCounts();
   assert.equal(counts.excluded, 0);
   assert.equal(counts.included, 1, "the row was never deleted");
-  assert.equal(listTransactions()[0]?.excludedReason, "", "the stale reason is cleared with the flag");
+  assert.equal(await listTransactions()[0]?.excludedReason, "", "the stale reason is cleared with the flag");
 });
 
 test("VAT ignores excluded transactions", () => {
@@ -101,9 +101,9 @@ test("VAT ignores excluded transactions", () => {
   const purchase = addTx("SOME SUPPLIER", -1230, "cat-software");
   db.update(schema.transactions).set({ vatRateId: "vat-standard" }).run();
 
-  const before = computeVatReturn("2026-07-01", "2026-09-30");
-  setExcluded([purchase], true, "personal");
-  const after = computeVatReturn("2026-07-01", "2026-09-30");
+  const before = await computeVatReturn("2026-07-01", "2026-09-30");
+  await setExcluded([purchase], true, "personal");
+  const after = await computeVatReturn("2026-07-01", "2026-09-30");
 
   assert.notEqual(before.t2_purchasesVat, 0, "it was reclaimable to begin with");
   assert.equal(after.t2_purchasesVat, 0, "and now it is not");

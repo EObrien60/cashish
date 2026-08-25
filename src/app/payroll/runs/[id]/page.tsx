@@ -1,4 +1,4 @@
-import { boot } from "@/lib/boot";
+import { withTenant } from "@/lib/request-context";
 import { getPayRun } from "@/lib/payroll";
 import { PayRunBuilder } from "@/components/PayRunBuilder";
 import { notFound } from "next/navigation";
@@ -10,9 +10,10 @@ export default async function PayRunPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  boot();
-  const { id } = await params;
-  const run = getPayRun(id);
-  if (!run) notFound();
-  return <PayRunBuilder run={run} />;
+  return withTenant(async () => {
+    const { id } = await params;
+    const run = await getPayRun(id);
+    if (!run) notFound();
+    return <PayRunBuilder run={run} />;
+  });
 }

@@ -26,8 +26,8 @@ async function main() {
 
   // A miniature version of the real job: bank inflows that arrived, one invoice
   // that explains one of them, and one that nothing explains.
-  const { customer } = createCustomer({ name: "Breakthrough Maths", email: "accounts@btm.test" });
-  createInvoice({
+  const { customer } = await createCustomer({ name: "Breakthrough Maths", email: "accounts@btm.test" });
+  await createInvoice({
     customerId: customer.id,
     status: "sent",
     issueDate: "2026-07-01",

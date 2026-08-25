@@ -1,14 +1,17 @@
-import { boot } from "@/lib/boot";
-import { buildIntegrationSummary, integrationTokenMatches } from "@/lib/integration";
+import { runInTenant } from "@/db/context";
+import { resolveApiKey } from "@/lib/auth";
+import { can } from "@/lib/rbac";
+import { buildIntegrationSummary } from "@/lib/integration";
 
 export const dynamic = "force-dynamic";
 
-// The integration surface over HTTP, for when cashish is running.
+// The integration surface over HTTP — one aggregate payload per tenant, for
+// Lunar to pull.
 //
-// Closed unless CASHISH_INTEGRATION_TOKEN is set and matches: this is a local
-// accounting app, and an unguarded endpoint returning who owes what is not
-// something to leave lying around. The desktop app can use the file export
-// instead (npm run export:integration).
+// Authentication is an API key, not the old shared CASHISH_INTEGRATION_TOKEN
+// env var. That token identified no tenant, so in a multi-tenant service it
+// could not answer the only question that matters here: whose books? A key
+// carries its tenant and its role, and a read-only key is enough for this.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const header = req.headers.get("authorization");
@@ -16,19 +19,18 @@ export async function GET(req: Request) {
     ? header.slice(7)
     : url.searchParams.get("token");
 
-  if (!integrationTokenMatches(provided)) {
+  const credential = provided ? await resolveApiKey(provided) : null;
+  if (!credential || !can(credential.role, "books:read")) {
     return Response.json(
       {
         error: "unauthorised",
-        hint: "Set CASHISH_INTEGRATION_TOKEN and send it as `Authorization: Bearer <token>`.",
+        hint: "Send a cashish API key as `Authorization: Bearer ck_live_…`. Create one in Settings.",
       },
-      { status: 401 },
+      { status: 401, headers: { "www-authenticate": "Bearer" } },
     );
   }
 
-  boot();
   const asOf = url.searchParams.get("asOf") ?? undefined;
-  return Response.json(buildIntegrationSummary(asOf), {
-    headers: { "cache-control": "no-store" },
-  });
+  const summary = await runInTenant(credential, () => buildIntegrationSummary(asOf));
+  return Response.json(summary, { headers: { "cache-control": "no-store" } });
 }

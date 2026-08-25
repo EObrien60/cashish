@@ -531,3 +531,141 @@ export type Employee = typeof employees.$inferSelect;
 export type Rpn = typeof rpns.$inferSelect;
 export type PayRun = typeof payRuns.$inferSelect;
 export type Payslip = typeof payslips.$inferSelect;
+
+// --- Identity, membership and machine credentials ---------------------------
+// Appended after the domain tables because they reference tenants and are what
+// resolves a request into the tenant context the domain tables are scoped by.
+
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    /** scrypt, stored as "<saltHex>:<derivedKeyHex>". Never a plaintext column. */
+    passwordHash: text("password_hash").notNull(),
+    name: text("name").notNull().default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("user_email_idx").on(t.email)],
+);
+
+/** Which tenants a user may act in, and as what. The source of truth for role. */
+export const memberships = pgTable(
+  "memberships",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: tenantId(),
+    role: text("role").notNull(), // owner | accountant | viewer
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.tenantId] }),
+    index("membership_tenant_idx").on(t.tenantId),
+  ],
+);
+
+export const invites = pgTable(
+  "invites",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    /** sha256 of the token. The token itself is only ever in the invite link. */
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    acceptedAt: text("accepted_at"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("invite_token_idx").on(t.tokenHash)],
+);
+
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    name: text("name").notNull().default(""),
+    /** Leading public segment, used to find the row before verifying the hash. */
+    prefix: text("prefix").notNull(),
+    keyHash: text("key_hash").notNull(),
+    /** A key carries its own role, so a read-only key is expressible. */
+    role: text("role").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    lastUsedAt: text("last_used_at"),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    uniqueIndex("apikey_prefix_idx").on(t.prefix),
+    index("apikey_tenant_idx").on(t.tenantId),
+  ],
+);
+
+// --- OAuth 2.1 authorization server -----------------------------------------
+// Makes cashish an OAuth *provider*, so an MCP client (claude.ai included) can
+// be granted scoped access to one tenant's books without being handed a key.
+
+export const oauthClients = pgTable(
+  "oauth_clients",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id").notNull(),
+    /** Null for public clients, which must use PKCE. */
+    clientSecretHash: text("client_secret_hash"),
+    name: text("name").notNull().default(""),
+    redirectUris: text("redirect_uris").notNull(), // JSON array of exact-match URIs
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("oauth_client_id_idx").on(t.clientId)],
+);
+
+export const oauthCodes = pgTable(
+  "oauth_codes",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    clientId: text("client_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: tenantId(),
+    role: text("role").notNull(),
+    scopes: text("scopes").notNull(), // space-delimited
+    codeChallenge: text("code_challenge").notNull(), // PKCE S256, mandatory
+    redirectUri: text("redirect_uri").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    /** Set under the same UPDATE that reads the row, so replay cannot succeed. */
+    consumedAt: text("consumed_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+);
+
+export const oauthTokens = pgTable(
+  "oauth_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    kind: text("kind").notNull(), // access | refresh
+    clientId: text("client_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: tenantId(),
+    role: text("role").notNull(),
+    scopes: text("scopes").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("oauth_token_user_idx").on(t.userId, t.kind)],
+);
+
+export type User = typeof users.$inferSelect;
+export type Membership = typeof memberships.$inferSelect;
+export type Invite = typeof invites.$inferSelect;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type OauthClient = typeof oauthClients.$inferSelect;

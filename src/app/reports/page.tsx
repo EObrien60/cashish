@@ -1,4 +1,4 @@
-import { boot } from "@/lib/boot";
+import { withTenant } from "@/lib/request-context";
 import { profitAndLoss, monthlyCashflow } from "@/lib/reports";
 import { resolvePeriod } from "@/lib/period";
 import { money, fmtDate } from "@/lib/format";
@@ -59,67 +59,68 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  boot();
-  const sp = await searchParams;
-  const period = resolvePeriod(sp.period);
-  const pnl = profitAndLoss(period.from, period.to);
-  const monthly = monthlyCashflow(period.from, period.to);
+  return withTenant(async () => {
+    const sp = await searchParams;
+    const period = resolvePeriod(sp.period);
+    const pnl = await profitAndLoss(period.from, period.to);
+    const monthly = await monthlyCashflow(period.from, period.to);
 
-  return (
-    <div>
-      <PageHeader
-        title="Reports"
-        subtitle="Profit & loss and cashflow, straight from your ledger."
-      />
-      <div className="mb-6">
-        <PeriodTabs active={period.key} basePath="/reports" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Total income" value={money(pnl.totalIncome)} tone="in" />
-        <StatCard label="Total expenses" value={money(pnl.totalExpense)} tone="out" />
-        <StatCard
-          label="Net profit"
-          value={money(pnl.net)}
-          tone={pnl.net >= 0 ? "in" : "out"}
+    return (
+      <div>
+        <PageHeader
+          title="Reports"
+          subtitle="Profit & loss and cashflow, straight from your ledger."
         />
-      </div>
-
-      <Card className="mt-4 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold">Monthly cashflow</h2>
-          <span className="text-xs text-ink-faint">
-            {fmtDate(period.from)} – {fmtDate(period.to)}
-          </span>
+        <div className="mb-6">
+          <PeriodTabs active={period.key} basePath="/reports" />
         </div>
-        <CashflowChart data={monthly} />
-      </Card>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Section
-          title="Income"
-          rows={pnl.income.map((i) => ({ name: i.name, total: i.total, count: i.count }))}
-          total={pnl.totalIncome}
-          tone="in"
-        />
-        <Section
-          title="Expenses"
-          rows={pnl.expenses.map((e) => ({ name: e.name, total: e.total, count: e.count }))}
-          total={pnl.totalExpense}
-          tone="out"
-        />
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard label="Total income" value={money(pnl.totalIncome)} tone="in" />
+          <StatCard label="Total expenses" value={money(pnl.totalExpense)} tone="out" />
+          <StatCard
+            label="Net profit"
+            value={money(pnl.net)}
+            tone={pnl.net >= 0 ? "in" : "out"}
+          />
+        </div>
+
+        <Card className="mt-4 p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Monthly cashflow</h2>
+            <span className="text-xs text-ink-faint">
+              {fmtDate(period.from)} – {fmtDate(period.to)}
+            </span>
+          </div>
+          <CashflowChart data={monthly} />
+        </Card>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Section
+            title="Income"
+            rows={pnl.income.map((i) => ({ name: i.name, total: i.total, count: i.count }))}
+            total={pnl.totalIncome}
+            tone="in"
+          />
+          <Section
+            title="Expenses"
+            rows={pnl.expenses.map((e) => ({ name: e.name, total: e.total, count: e.count }))}
+            total={pnl.totalExpense}
+            tone="out"
+          />
+        </div>
+
+        {(pnl.uncategorizedIncome > 0 || pnl.uncategorizedExpense > 0) && (
+          <p className="mt-4 text-sm text-ink-faint">
+            Tip: you have uncategorised transactions affecting these totals.
+            Categorise them on the{" "}
+            <a href="/transactions?filter=uncategorized" className="text-brand hover:underline">
+              Transactions
+            </a>{" "}
+            page for accurate reporting.
+          </p>
+        )}
       </div>
-
-      {(pnl.uncategorizedIncome > 0 || pnl.uncategorizedExpense > 0) && (
-        <p className="mt-4 text-sm text-ink-faint">
-          Tip: you have uncategorised transactions affecting these totals.
-          Categorise them on the{" "}
-          <a href="/transactions?filter=uncategorized" className="text-brand hover:underline">
-            Transactions
-          </a>{" "}
-          page for accurate reporting.
-        </p>
-      )}
-    </div>
-  );
+    );
+  });
 }

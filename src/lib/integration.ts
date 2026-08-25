@@ -198,17 +198,3 @@ export async function buildIntegrationSummary(asOf = today()): Promise<Integrati
     },
   };
 }
-
-/** Guard for the HTTP surface. Absent token means the endpoint stays closed. */
-export function integrationTokenMatches(provided: string | null): boolean {
-  const expected = process.env.CASHISH_INTEGRATION_TOKEN;
-  if (!expected) return false;
-  if (!provided) return false;
-  // Constant-time-ish: compare full strings of equal length only.
-  if (provided.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < expected.length; i += 1) {
-    mismatch |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
