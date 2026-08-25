@@ -540,7 +540,7 @@ never guessed.
 | id | question | blocks | default if unanswered |
 |---|---|---|---|
 | **D1** | Vercel project name and production domain? Needed for `APP_URL` and OAuth `redirect_uri` validation. | ⑤ (④ for redirect URIs) | Vercel-assigned `*.vercel.app` |
-| **D2** | PR target branch. Repo has no staging; current branch is `feat/mcp-and-lunar-integration`. | ① | `main` |
+| **D2** | **Branch dependency.** This work restructures `mcp/server.ts`, which exists only on `feat/mcp-and-lunar-integration` — 5 commits ahead of `main`, unpushed, no PR. `feat/cloud-multitenant` is therefore cut from that branch, not from `main`. Either land the MCP branch to `main` first (then PR ① into `main` cleanly), or accept that PR ① stacks on an unmerged branch. Merging is the user's call and was not done. | ① | stack on `feat/mcp-and-lunar-integration`; no merge performed |
 | **D3** | Neon via the Vercel Marketplace integration, or an existing Neon project? | ① | Marketplace integration |
 | **D4** | First tenant slug + name, and owner email. | ⑤ | slug from business name; owner `ethan@triplebolt.io` |
 | **D5** | Does anyone besides the owner need access at cutover? Determines whether the invite flow ships in ② or is built-but-unused. | ② | built, unused, no email delivery |
