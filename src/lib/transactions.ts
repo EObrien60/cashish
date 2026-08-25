@@ -176,13 +176,18 @@ export async function updateTransaction(
 }
 
 // Bulk categorise — used by the "apply to all matching" affordance.
+//
+// Returns rows actually changed, not ids requested. Those differ whenever an id
+// does not exist or belongs to another tenant, and reporting the request back as
+// if it were the result told an MCP agent that work had happened when none had.
 export async function bulkCategorize(ids: string[], categoryId: string | null) {
   if (ids.length === 0) return 0;
-  await db
+  const updated = await db
     .update(transactions)
     .set({ categoryId })
-    .where(and(ofTenant(), inArray(transactions.id, ids)));
-  return ids.length;
+    .where(and(ofTenant(), inArray(transactions.id, ids)))
+    .returning({ id: transactions.id });
+  return updated.length;
 }
 
 /**
@@ -201,7 +206,8 @@ export async function setExcluded(
   reason = "",
 ): Promise<{ updated: number }> {
   if (ids.length === 0) return { updated: 0 };
-  await db
+  // As with bulkCategorize: the count is rows changed, not ids asked about.
+  const updated = await db
     .update(transactions)
     .set({
       excluded,
@@ -210,8 +216,9 @@ export async function setExcluded(
       // An excluded transaction cannot also be categorised — it is out of the books.
       ...(excluded ? { categoryId: null, vatRateId: null } : {}),
     })
-    .where(and(ofTenant(), inArray(transactions.id, ids)));
-  return { updated: ids.length };
+    .where(and(ofTenant(), inArray(transactions.id, ids)))
+    .returning({ id: transactions.id });
+  return { updated: updated.length };
 }
 
 /** Counts for the tab labels, so the UI does not have to fetch rows to show a number. */

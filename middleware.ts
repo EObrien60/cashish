@@ -29,10 +29,20 @@ const PUBLIC_PREFIXES = [
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  // The root layout needs to know which page is rendering so it can skip the app
+  // chrome on the sign-in screens. A Server Component cannot read the pathname,
+  // so it is forwarded as a request header.
+  const withPath = () => {
+    const headers = new Headers(request.headers);
+    headers.set("x-pathname", pathname);
+    return NextResponse.next({ request: { headers } });
+  };
+
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return NextResponse.next();
+    return withPath();
   }
-  if (request.cookies.get(SESSION_COOKIE)?.value) return NextResponse.next();
+  if (request.cookies.get(SESSION_COOKIE)?.value) return withPath();
 
   const login = new URL("/login", request.url);
   login.searchParams.set("next", `${pathname}${search}`);

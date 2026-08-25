@@ -136,3 +136,19 @@ test("VAT ignores excluded transactions", async () => {
     assert.equal(after.netPurchases, 0);
   });
 });
+
+test("counts report rows actually changed, not ids asked about", async () => {
+  await clear();
+  const real = await addTx("A REAL LINE", -10);
+
+  await asTenant(tenant, async () => {
+    // A transaction id that does not exist, alongside one that does.
+    const result = await setExcluded([real, "no-such-transaction"], true, "mixed batch");
+    assert.equal(
+      result.updated,
+      1,
+      "an id that matches nothing must not be counted as work done — an agent acts on this number",
+    );
+    assert.equal((await transactionCounts()).excluded, 1);
+  });
+});

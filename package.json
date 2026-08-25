@@ -15,7 +15,9 @@
     "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts",
     "test": "DATABASE_URL=${DATABASE_URL:-postgres://cashish:cashish@127.0.0.1:5470/cashish_test} tsx --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "cloud:import": "tsx scripts/cloud-import.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

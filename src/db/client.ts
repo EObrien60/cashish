@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
 // ---------------------------------------------------------------------------
@@ -14,27 +14,28 @@ import * as schema from "./schema";
 // Schema is applied by migrations (`npm run db:migrate`), never at request time.
 // Seeding is per tenant, at tenant creation — see seedTenant().
 //
-// The pool is module-scoped: Vercel Fluid Compute reuses instances across
-// concurrent requests, so this is created once per instance, not per request.
+// EVERYTHING HERE IS LAZY, DELIBERATELY. `next build` imports every route module
+// to collect its config, so anything this file does at module scope happens
+// during the build: a connection, or a thrown "DATABASE_URL is not set", turns a
+// build that never queries anything into a build that needs a live database.
+// The pool is therefore created on first use, not on import.
 // ---------------------------------------------------------------------------
-
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL is not set. Local dev expects a Postgres connection string, " +
-      "e.g. postgres://cashish:cashish@localhost:5470/cashish_dev",
-  );
-}
-// Bound to a const the compiler knows is a string; the guard above does not
-// narrow process.env inside the closure below.
-const connectionString: string = DATABASE_URL;
 
 declare global {
   // eslint-disable-next-line no-var
   var __cashish_pool__: Pool | undefined;
+  // eslint-disable-next-line no-var
+  var __cashish_db__: NodePgDatabase<typeof schema> | undefined;
 }
 
-function createPool() {
+function createPool(): Pool {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL is not set. Local dev expects a Postgres connection string, " +
+        "e.g. postgres://cashish:cashish@localhost:5470/cashish_dev",
+    );
+  }
   return new Pool({
     connectionString,
     // Neon terminates idle connections; keep the pool small and let it recycle.
@@ -47,10 +48,36 @@ function createPool() {
 }
 
 // Reused across HMR reloads in dev so `next dev` does not leak a pool per edit.
-const pool = global.__cashish_pool__ ?? createPool();
-if (process.env.NODE_ENV !== "production") global.__cashish_pool__ = pool;
+function getPool(): Pool {
+  global.__cashish_pool__ ??= createPool();
+  return global.__cashish_pool__;
+}
 
-export const db = drizzle(pool, { schema });
+function getDb(): NodePgDatabase<typeof schema> {
+  global.__cashish_db__ ??= drizzle(getPool(), { schema });
+  return global.__cashish_db__;
+}
+
+/**
+ * A stand-in that builds the real drizzle client on first property access.
+ *
+ * The alternative is exporting a getter and writing `getDb().select(...)` at
+ * ~400 call sites, which buys nothing: this keeps `db.select(...)` reading
+ * exactly as it always has while moving the connection to first query.
+ */
+export const db = new Proxy({} as NodePgDatabase<typeof schema>, {
+  get: (_target, property, receiver) => Reflect.get(getDb(), property, receiver),
+  has: (_target, property) => property in getDb(),
+});
+
+/** Lazy too — importing this module must never open a socket. */
+export const pool = {
+  end: () => (global.__cashish_pool__ ? global.__cashish_pool__.end() : Promise.resolve()),
+  query: ((...args: Parameters<Pool["query"]>) =>
+    (getPool().query as (...a: unknown[]) => unknown)(...args)) as Pool["query"],
+};
+
+export type Db = NodePgDatabase<typeof schema>;
 
 /**
  * Replaces better-sqlite3's `.get()`, which node-postgres has no equivalent for.
@@ -59,5 +86,5 @@ export const db = drizzle(pool, { schema });
 export function first<T>(rows: T[]): T | null {
   return rows[0] ?? null;
 }
-export type Db = typeof db;
-export { pool, schema };
+
+export { schema };
