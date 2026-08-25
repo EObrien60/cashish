@@ -62,6 +62,8 @@ npm run dev
 | `npm run bootstrap -- …` | create the first tenant and its owner |
 | `npm run cloud:import -- --from <sqlite> --tenant <slug>` | import a legacy SQLite book, verified |
 | `npm run api-key -- --tenant <slug> --name … --role …` | mint an API key |
+| `npm run add-member -- --tenant <slug> --email … --role …` | grant someone access without an invite link |
+| `npm run set-password -- --email … --password …` | rotate a password |
 | `npm run mcp` | MCP over stdio (needs `CASHISH_TENANT`) |
 
 ### Environment
@@ -71,7 +73,7 @@ npm run dev
 | `DATABASE_URL` | yes | Postgres. In production, Neon's **pooled** endpoint. |
 | `AUTH_SECRET` | yes | ≥32 chars; `openssl rand -base64 48`. Distinct per environment. |
 | `APP_URL` | production | public origin; OAuth metadata and invite links depend on it |
-| `BLOB_READ_WRITE_TOKEN` | for receipts | absent locally ⇒ blobs fall back to `./data/blobs` |
+| `BLOB_READ_WRITE_TOKEN` | for receipts | absent locally ⇒ blobs fall back to `./data/blobs`. The store must be created with **private** access; a public one rejects the writes. |
 | `CASHISH_TENANT` | for `npm run mcp` | tenant slug the stdio server serves |
 | `CASHISH_ALLOW_PREVIEW_DB` | no | confirms a preview deployment has its own database |
 

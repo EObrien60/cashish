@@ -149,6 +149,9 @@ export function Sidebar({ role, tenants, activeTenantId, switchTenant, logout }:
         {tenants.length === 1 && (
           <div className="mb-2 truncate text-xs font-medium">{tenants[0].name}</div>
         )}
+        <Link href="/businesses" className="mb-2 block text-[11px] text-ink-faint underline hover:text-ink">
+          Businesses
+        </Link>
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] uppercase tracking-wide text-ink-faint">{role}</span>
           <button

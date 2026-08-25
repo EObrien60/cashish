@@ -18,6 +18,7 @@ import {
   sha256,
 } from "@/lib/auth";
 import { currentSession, setSessionCookie, clearSessionCookie } from "@/lib/session";
+import { createTenant, findTenantBySlug } from "@/db/seed";
 import { isRole, requireCapability, type Role } from "@/lib/rbac";
 import { uid } from "@/lib/id";
 
@@ -59,6 +60,41 @@ export async function switchTenant(tenantId: string) {
   if (!role) throw new Error("not a member of that business");
   await setSessionCookie({ uid: session.userId, tid: tenantId });
   revalidatePath("/", "layout");
+}
+
+// ---- Businesses ------------------------------------------------------------
+
+/**
+ * Creates a business and makes the caller its owner.
+ *
+ * Any signed-in user may do this. There is no tenant context to check against —
+ * this is what *creates* one — so the only gate is being signed in. Creating an
+ * empty business grants no access to anybody else's.
+ */
+export async function createBusiness(formData: FormData) {
+  const session = await currentSession();
+  if (!session) throw new Error("not authenticated");
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "A name is required." };
+
+  // Slug from the name, and it has to be unique across the deployment because it
+  // is what the stdio MCP server and the CLI scripts address a tenant by.
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "business";
+  let slug = base;
+  for (let n = 2; await findTenantBySlug(slug); n += 1) slug = `${base}-${n}`;
+
+  const tenantId = await createTenant({ slug, name });
+  await addMembership(session.userId, tenantId, "owner");
+  // Switch into it, so "create" lands you inside the thing you just made.
+  await setSessionCookie({ uid: session.userId, tid: tenantId });
+  revalidatePath("/", "layout");
+  return { slug };
 }
 
 // ---- Members and invites (owner only) --------------------------------------

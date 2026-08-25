@@ -161,3 +161,53 @@ test("a query outside a tenant context throws instead of reading everything", as
   await assert.rejects(() => profitAndLoss("2026-01-01", "2026-12-31"), /No tenant context/);
   await assert.rejects(() => buildIntegrationSummary(), /No tenant context/);
 });
+
+test("a second business starts empty, seeded, and isolated from the first", async () => {
+  const { createTenant } = await import("../src/db/seed");
+  const { uid } = await import("../src/lib/id");
+  const fresh = await createTenant({ slug: `iso-new-${uid().slice(0, 8)}`, name: "Second Co" });
+
+  await asTenant(fresh, async () => {
+    // Its own copy of the reference data, not a view of anybody else's.
+    assert.equal((await listVatRates()).length, 5);
+    assert.equal((await listCategories()).length, 15);
+    assert.equal((await getSettings()).businessName, "Second Co");
+
+    // And no books at all, despite two populated tenants existing.
+    assert.equal((await listTransactions({ excluded: "all" })).length, 0);
+    assert.equal((await listInvoices()).length, 0);
+    assert.equal((await listCustomers({ includeArchived: true })).length, 0);
+    const pnl = await profitAndLoss("2026-01-01", "2026-12-31");
+    assert.equal(pnl.totalIncome, 0);
+    assert.equal(pnl.totalExpense, 0);
+  });
+
+  // And the originals are untouched by its existence.
+  await asTenant(a, async () => {
+    assert.equal((await listTransactions({ excluded: "all" })).length, 2);
+    assert.equal((await profitAndLoss("2026-07-01", "2026-07-31")).totalIncome, 1000);
+  });
+});
+
+test("invoice numbering restarts per business", async () => {
+  const { createTenant } = await import("../src/db/seed");
+  const { uid } = await import("../src/lib/id");
+  const { createCustomer: mkCustomer } = await import("../src/lib/customers");
+  const { createInvoice: mkInvoice } = await import("../src/lib/invoices");
+  const fresh = await createTenant({ slug: `iso-num-${uid().slice(0, 8)}`, name: "Numbering Co" });
+
+  await asTenant(fresh, async () => {
+    const { customer } = await mkCustomer({ name: "First Client" });
+    const invoice = await mkInvoice({
+      customerId: customer.id,
+      status: "draft",
+      issueDate: "2026-08-01",
+      lines: [{ description: "Work", quantity: 1, unitPrice: 100, vatRateId: null, productId: null }],
+    });
+    assert.equal(
+      invoice?.number,
+      "INV-0001",
+      "a new business starts at 1, regardless of how many invoices exist elsewhere",
+    );
+  });
+});

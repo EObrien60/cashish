@@ -18,7 +18,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "bootstrap": "tsx scripts/bootstrap.ts",
     "cloud:import": "tsx scripts/cloud-import.ts",
-    "set-password": "tsx scripts/set-password.ts"
+    "set-password": "tsx scripts/set-password.ts",
+    "add-member": "tsx scripts/add-member.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
