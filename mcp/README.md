@@ -23,7 +23,20 @@ Mint a key (Settings → API keys, or the CLI):
 npm run api-key -- --tenant <slug> --name "claude code" --role accountant
 ```
 
-The key is shown once. Then, in `.mcp.json`:
+The key is shown once. The quickest way to register it with Claude Code:
+
+```sh
+claude mcp add --transport http --scope user cashish \
+  https://<your-deployment>/api/mcp \
+  --header "Authorization: Bearer ck_live_…"
+claude mcp list          # expect: cashish … ✔ Connected
+```
+
+`--scope user` puts it in your own `~/.claude.json`, available in every project.
+Use `--scope local` for one project only. **Do not use `--scope project`**: that
+writes to the repository's committed `.mcp.json`, which would commit the key.
+
+Equivalently, by hand:
 
 ```json
 {
@@ -35,6 +48,25 @@ The key is shown once. Then, in `.mcp.json`:
     }
   }
 }
+```
+
+Pick the role to match what you want the agent to be able to do. `accountant` can
+work the books but cannot touch settings, people or keys, which is the sensible
+default for day-to-day agent use; `owner` can do everything.
+
+One key addresses one business. A second business needs its own key and its own
+entry.
+
+### The committed `.mcp.json`
+
+The `.mcp.json` in this repository registers **`cashish-local`** — the stdio
+server, against whatever `DATABASE_URL` and `CASHISH_TENANT` your shell provides.
+It deliberately contains no credentials, because it is committed. Point it at a
+dev or scratch database:
+
+```sh
+export DATABASE_URL=postgres://cashish:cashish@127.0.0.1:5470/cashish_dev
+export CASHISH_TENANT=<slug>
 ```
 
 ### Roles, not a flag
