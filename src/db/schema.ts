@@ -102,6 +102,15 @@ export const categories = pgTable(
     }),
     // Whether a tx in this category carries claimable/charged VAT at all.
     vatApplicable: boolean("vat_applicable").notNull().default(true),
+    /**
+     * Counts as cost of sales rather than an overhead.
+     *
+     * A flag rather than a guess from the category name: gross margin is the
+     * number a reseller lives on, and deciding which spend is "direct" by
+     * pattern-matching a label would make it wrong in a way nobody could see.
+     * Set on the seeded Cost of sales category; editable per category.
+     */
+    costOfSales: boolean("cost_of_sales").notNull().default(false),
     color: text("color").default("#9ca3af"),
     createdAt: text("created_at").notNull().default(now),
   },

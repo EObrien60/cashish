@@ -32,6 +32,7 @@ type SeedCategory = {
   color: string;
   defaultVatRateId: string;
   vatApplicable?: boolean;
+  costOfSales?: boolean;
 };
 
 export const DEFAULT_CATEGORIES: SeedCategory[] = [
@@ -39,7 +40,7 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
   { id: "cat-other-income", name: "Other income", kind: "income", color: "#1aa37c", defaultVatRateId: "vat-zero" },
   { id: "cat-interest", name: "Interest received", kind: "income", color: "#3aa0a0", defaultVatRateId: "vat-exempt", vatApplicable: false },
   { id: "cat-software", name: "Software & subscriptions", kind: "expense", color: "#6366f1", defaultVatRateId: "vat-standard" },
-  { id: "cat-cogs", name: "Cost of sales", kind: "expense", color: "#c0492f", defaultVatRateId: "vat-standard" },
+  { id: "cat-cogs", name: "Cost of sales", kind: "expense", color: "#c0492f", defaultVatRateId: "vat-standard", costOfSales: true },
   { id: "cat-travel", name: "Travel & subsistence", kind: "expense", color: "#d97706", defaultVatRateId: "vat-standard" },
   { id: "cat-office", name: "Office & equipment", kind: "expense", color: "#0891b2", defaultVatRateId: "vat-standard" },
   { id: "cat-marketing", name: "Marketing & advertising", kind: "expense", color: "#db2777", defaultVatRateId: "vat-standard" },
