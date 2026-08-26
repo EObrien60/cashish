@@ -108,8 +108,9 @@ export default async function ReportsPage({
               { label: "Revenue", value: now.revenue, prior: before.revenue, strong: true },
               {
                 label: "less Cost of sales",
-                value: -now.costOfSales,
-                prior: -before.costOfSales,
+                value: now.costOfSales,
+                prior: before.costOfSales,
+                deduction: true,
                 sub: `${pct(now.revenue ? (now.costOfSales / now.revenue) * 100 : 0)} of revenue`,
               },
               {
@@ -121,8 +122,9 @@ export default async function ReportsPage({
               },
               {
                 label: "less Overheads",
-                value: -now.overheads,
-                prior: -before.overheads,
+                value: now.overheads,
+                prior: before.overheads,
+                deduction: true,
                 sub: `${pct(now.revenue ? (now.overheads / now.revenue) * 100 : 0)} of revenue`,
               },
               {
@@ -146,15 +148,23 @@ export default async function ReportsPage({
                   )}
                 </span>
                 <span className="flex items-baseline gap-3">
+                  {/* A deduction is already labelled "less", so it reads better
+                      unsigned. A TOTAL must keep its sign: abs() here turned an
+                      operating loss into a profit, with only the colour to
+                      suggest otherwise. */}
                   <span className="text-xs font-normal text-ink-faint tabular">
-                    {money(Math.abs(row.prior))}
+                    {money(row.deduction ? Math.abs(row.prior) : row.prior)}
                   </span>
                   <span
                     className={`tabular ${
-                      row.value < 0 ? "text-money-out" : row.strong ? "text-money-in" : ""
+                      row.deduction
+                        ? "text-money-out"
+                        : row.value < 0
+                          ? "text-money-out"
+                          : "text-money-in"
                     }`}
                   >
-                    {money(Math.abs(row.value))}
+                    {row.deduction ? money(Math.abs(row.value)) : money(row.value)}
                   </span>
                 </span>
               </div>
