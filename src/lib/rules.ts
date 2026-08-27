@@ -26,6 +26,8 @@ export type RuleInput = {
    * applying it backfills the history too.
    */
   employeeId?: string | null;
+  /** Optional: also attach this vendor. Same reasoning as employeeId. */
+  vendorId?: string | null;
 };
 
 const ofTenant = () => eq(categoryRules.tenantId, tenantId());
@@ -174,9 +176,10 @@ export async function applyRulesToTransactions(
         .set({
           categoryId: rule.categoryId ?? null,
           vatRateId: rule.vatRateId ?? null,
-          // Only set when the rule names someone. A rule with no employee must
-          // not clear one that was attached by hand.
+          // Only set when the rule names one. A rule that names neither must
+          // not clear an attribution made by hand.
           ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
+          ...(rule.vendorId ? { vendorId: rule.vendorId } : {}),
         })
         .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
       updated++;

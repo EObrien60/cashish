@@ -10,6 +10,7 @@ import {
   setTxVat,
   bulkCategorizeTx,
   setTxEmployeeAction,
+  setTxVendorAction,
   applyRulesAction,
   setExcludedAction,
 } from "@/app/actions";
@@ -33,6 +34,8 @@ type Props = {
   receiptCounts: Record<string, number>;
   /** People this business pays, for attributing a payment to one of them. */
   people?: { id: string; name: string }[];
+  /** Suppliers, for attributing a payment to one of them. */
+  vendors?: { id: string; name: string }[];
   initialFilter?: string;
 };
 
@@ -42,6 +45,7 @@ export function TransactionsView({
   vatRates,
   receiptCounts,
   people = [],
+  vendors = [],
   initialFilter,
 }: Props) {
   const router = useRouter();
@@ -138,6 +142,13 @@ export function TransactionsView({
   function onEmployee(t: Transaction, employeeId: string) {
     startTransition(async () => {
       await setTxEmployeeAction([t.id], employeeId || null);
+      router.refresh();
+    });
+  }
+
+  function onVendor(t: Transaction, vendorId: string) {
+    startTransition(async () => {
+      await setTxVendorAction([t.id], vendorId || null);
       router.refresh();
     });
   }
@@ -404,6 +415,7 @@ export function TransactionsView({
                   <th className="th w-56">Category</th>
                   <th className="th w-36">VAT</th>
                   {people.length > 0 && <th className="th w-40">Paid to</th>}
+                  {vendors.length > 0 && <th className="th w-44">Vendor</th>}
                   <th className="th w-32 text-right">Amount</th>
                   <th className="th w-16 text-center">Receipt</th>
                 </tr>
@@ -505,6 +517,26 @@ export function TransactionsView({
                           ))}
                         </select>
                       </td>
+                      {vendors.length > 0 && (
+                        <td className="td">
+                          {isOut ? (
+                            <select
+                              value={t.vendorId ?? ""}
+                              onChange={(e) => onVendor(t, e.target.value)}
+                              className="w-full rounded-md border border-line bg-card px-2 py-1 text-sm outline-none focus:border-brand"
+                            >
+                              <option value="">—</option>
+                              {vendors.map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-ink-faint">—</span>
+                          )}
+                        </td>
+                      )}
                       {people.length > 0 && (
                         <td className="td">
                           {/* Only meaningful for money going out, so the control

@@ -40,6 +40,10 @@ const SECTIONS: {
       { href: "/products", label: "Products", icon: IconBox },
     ],
   },
+  {
+    label: "Purchases",
+    items: [{ href: "/vendors", label: "Vendors", icon: IconBox }],
+  },
   { label: "People", items: [{ href: "/payroll", label: "Payroll", icon: IconPayroll }] },
   {
     label: "Reporting",

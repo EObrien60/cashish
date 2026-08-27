@@ -167,6 +167,8 @@ export const transactions = pgTable(
     employeeId: text("employee_id").references(() => employees.id, {
       onDelete: "set null",
     }),
+    /** Who was paid, when it was a supplier rather than a person. */
+    vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
     importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(now),
   },
@@ -176,6 +178,7 @@ export const transactions = pgTable(
     index("tx_cat_idx").on(t.tenantId, t.categoryId),
     index("tx_excluded_idx").on(t.tenantId, t.excluded),
     index("tx_employee_idx").on(t.tenantId, t.employeeId),
+    index("tx_vendor_idx").on(t.tenantId, t.vendorId),
   ],
 );
 
@@ -395,6 +398,8 @@ export const categoryRules = pgTable(
     employeeId: text("employee_id").references(() => employees.id, {
       onDelete: "set null",
     }),
+    /** Optional: also attach this vendor. Same trick, for suppliers. */
+    vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
     sortOrder: integer("sort_order").notNull().default(0),
     timesApplied: integer("times_applied").notNull().default(0),
     createdAt: text("created_at").notNull().default(now),
@@ -559,6 +564,103 @@ export type Employee = typeof employees.$inferSelect;
 export type Rpn = typeof rpns.$inferSelect;
 export type PayRun = typeof payRuns.$inferSelect;
 export type Payslip = typeof payslips.$inferSelect;
+
+// --- Vendors and bills (accounts payable) -----------------------------------
+// The mirror image of customers and invoices. A bill is a supplier's invoice to
+// you: it can arrive before it is paid (a payable), be paid by one bank line, or
+// be paid in parts — the same three cases the sales side already handles, so it
+// uses the same shape rather than a second way of thinking about the problem.
+
+export const vendors = pgTable(
+  "vendors",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    email: text("email").default(""),
+    vatNumber: text("vat_number").default(""),
+    addressLine1: text("address_line1").default(""),
+    addressLine2: text("address_line2").default(""),
+    city: text("city").default(""),
+    country: text("country").default("Ireland"),
+    /** What you usually buy from them; the default when a bill is entered. */
+    defaultCategoryId: text("default_category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    notes: text("notes").default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("vendor_tenant_idx").on(t.tenantId)],
+);
+
+export const bills = pgTable(
+  "bills",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    vendorId: text("vendor_id")
+      .notNull()
+      .references(() => vendors.id, { onDelete: "restrict" }),
+    /** The supplier's own reference, which is how they will chase you. */
+    number: text("number").notNull().default(""),
+    status: text("status").notNull().default("awaiting"), // awaiting | paid | partial | void
+    issueDate: text("issue_date").notNull(),
+    dueDate: text("due_date"),
+    currency: text("currency").notNull().default("EUR"),
+    /** Net, VAT and gross as printed on the document. */
+    net: doublePrecision("net").notNull().default(0),
+    vatTotal: doublePrecision("vat_total").notNull().default(0),
+    total: doublePrecision("total").notNull().default(0),
+    amountPaid: doublePrecision("amount_paid").notNull().default(0),
+    categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+    vatRateId: text("vat_rate_id").references(() => vatRates.id, { onDelete: "set null" }),
+    notes: text("notes").default(""),
+    /** The uploaded document, in blob storage. Empty when none was attached. */
+    fileName: text("file_name").default(""),
+    mimeType: text("mime_type").default(""),
+    fileSize: integer("file_size").notNull().default(0),
+    storagePath: text("storage_path").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("bill_vendor_idx").on(t.tenantId, t.vendorId),
+    index("bill_status_idx").on(t.tenantId, t.status),
+    index("bill_due_idx").on(t.tenantId, t.dueDate),
+  ],
+);
+
+export const billPayments = pgTable(
+  "bill_payments",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    billId: text("bill_id")
+      .notNull()
+      .references(() => bills.id, { onDelete: "cascade" }),
+    date: text("date").notNull(),
+    amount: doublePrecision("amount").notNull(),
+    method: text("method").default("bank"),
+    /** The bank line that settled it, when there is one. */
+    transactionId: text("transaction_id"),
+    note: text("note").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("billpay_bill_idx").on(t.tenantId, t.billId),
+    index("billpay_date_idx").on(t.tenantId, t.date),
+    // transactions has a composite primary key, so this FK must match it.
+    foreignKey({
+      columns: [t.tenantId, t.transactionId],
+      foreignColumns: [transactions.tenantId, transactions.id],
+      name: "billpay_tx_fk",
+    }).onDelete("set null"),
+  ],
+);
+
+export type Vendor = typeof vendors.$inferSelect;
+export type Bill = typeof bills.$inferSelect;
+export type BillPayment = typeof billPayments.$inferSelect;
 
 // --- Identity, membership and machine credentials ---------------------------
 // Appended after the domain tables because they reference tenants and are what

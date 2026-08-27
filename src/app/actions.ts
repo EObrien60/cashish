@@ -50,6 +50,20 @@ import {
 } from "@/lib/payroll";
 import { importRpnJson } from "@/lib/rpn-import";
 import { createPerson, setTransactionEmployee, setPersonStatus } from "@/lib/people";
+import {
+  createVendor,
+  updateVendor,
+  setVendorArchived,
+  setTransactionVendor,
+} from "@/lib/vendors";
+import {
+  createBill,
+  postBillToTransaction,
+  recordBillPayment,
+  setBillStatus,
+  deleteBill,
+  ALLOWED_BILL_MIME,
+} from "@/lib/bills";
 import type { Payslip } from "@/db/schema";
 
 const { categories, customers, products, settings, transactions } = schema;
@@ -569,5 +583,155 @@ export async function setPersonStatusAction(id: string, status: "active" | "leav
   return withCapability("books:write", async () => {
     await setPersonStatus(id, status);
     revalidatePath("/payroll/employees");
+  });
+}
+
+// ---- Vendors and bills -----------------------------------------------------
+
+export async function saveVendor(data: {
+  id?: string;
+  name: string;
+  email?: string;
+  vatNumber?: string;
+  addressLine1?: string;
+  city?: string;
+  country?: string;
+  defaultCategoryId?: string | null;
+  notes?: string;
+}) {
+  return withCapability("books:write", async () => {
+    if (!data.name?.trim()) return { error: "A name is required." };
+    if (data.id) {
+      const { id, ...rest } = data;
+      await updateVendor(id, rest);
+      revalidatePath(`/vendors/${id}`);
+    } else {
+      const { created } = await createVendor(data);
+      if (!created) return { error: "There is already a vendor with that name." };
+    }
+    revalidatePath("/vendors");
+    return { ok: true };
+  });
+}
+
+export async function archiveVendorAction(id: string, archived: boolean) {
+  return withCapability("books:write", async () => {
+    await setVendorArchived(id, archived);
+    revalidatePath("/vendors");
+    revalidatePath(`/vendors/${id}`);
+  });
+}
+
+export async function setTxVendorAction(ids: string[], vendorId: string | null) {
+  return withCapability("books:write", async () => {
+    const result = await setTransactionVendor(ids, vendorId);
+    revalidatePath("/transactions");
+    revalidatePath("/vendors");
+    return result;
+  });
+}
+
+/**
+ * Records a bill, optionally with the document attached and optionally posted
+ * straight against the bank line that paid it.
+ *
+ * The file is read out of the FormData before the capability wrapper, because a
+ * File cannot be carried across that boundary.
+ */
+export async function createBillAction(formData: FormData) {
+  const vendorId = String(formData.get("vendorId") ?? "");
+  const number = String(formData.get("number") ?? "");
+  const issueDate = String(formData.get("issueDate") ?? "");
+  const dueDate = String(formData.get("dueDate") ?? "");
+  const net = Number(formData.get("net") ?? 0);
+  const vatTotal = Number(formData.get("vatTotal") ?? 0);
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const vatRateId = String(formData.get("vatRateId") ?? "");
+  const notes = String(formData.get("notes") ?? "");
+  const paidBy = String(formData.get("paidByTransactionId") ?? "");
+  const file = formData.get("file") as File | null;
+
+  if (!vendorId) return { error: "Which vendor is this from?" };
+  if (!issueDate) return { error: "The bill needs a date." };
+  if (!Number.isFinite(net) || net <= 0) return { error: "Enter the net amount." };
+  if (!Number.isFinite(vatTotal) || vatTotal < 0) return { error: "VAT cannot be negative." };
+
+  let payload: { name: string; type: string; bytes: Buffer } | null = null;
+  if (file && file.size > 0) {
+    if (file.size > 15 * 1024 * 1024) return { error: "Max 15 MB." };
+    if (file.type && !ALLOWED_BILL_MIME.includes(file.type)) {
+      return { error: "Attach a PDF or an image." };
+    }
+    payload = {
+      name: file.name,
+      type: file.type,
+      bytes: Buffer.from(await file.arrayBuffer()),
+    };
+  }
+
+  return withCapability("books:write", async () => {
+    try {
+      const bill = await createBill({
+        vendorId,
+        number,
+        issueDate,
+        dueDate: dueDate || null,
+        net,
+        vatTotal,
+        categoryId: categoryId || null,
+        vatRateId: vatRateId || null,
+        notes,
+        file: payload,
+        paidByTransactionId: paidBy || null,
+      });
+      revalidatePath(`/vendors/${vendorId}`);
+      revalidatePath("/vendors");
+      revalidatePath("/transactions");
+      return { ok: true, id: bill?.id };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Could not save that bill." };
+    }
+  });
+}
+
+export async function postBillToTransactionAction(billId: string, transactionId: string) {
+  return withCapability("books:write", async () => {
+    try {
+      const bill = await postBillToTransaction(billId, transactionId);
+      revalidatePath("/vendors");
+      if (bill) revalidatePath(`/vendors/${bill.vendorId}`);
+      revalidatePath("/transactions");
+      return { ok: true };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Could not post that payment." };
+    }
+  });
+}
+
+export async function recordBillPaymentAction(
+  billId: string,
+  data: { date: string; amount: number; note?: string },
+) {
+  return withCapability("books:write", async () => {
+    const bill = await recordBillPayment(billId, data);
+    revalidatePath("/vendors");
+    if (bill) revalidatePath(`/vendors/${bill.vendorId}`);
+    return { ok: true };
+  });
+}
+
+export async function setBillStatusAction(id: string, status: "awaiting" | "void") {
+  return withCapability("books:write", async () => {
+    const bill = await setBillStatus(id, status);
+    revalidatePath("/vendors");
+    if (bill) revalidatePath(`/vendors/${bill.vendorId}`);
+  });
+}
+
+export async function deleteBillAction(id: string, vendorId: string) {
+  return withCapability("books:write", async () => {
+    await deleteBill(id);
+    revalidatePath("/vendors");
+    revalidatePath(`/vendors/${vendorId}`);
   });
 }
