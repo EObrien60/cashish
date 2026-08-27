@@ -22,6 +22,7 @@ export type ParsedRow = Omit<
   // attached afterwards, by hand or by a rule.
   | "employeeId"
   | "vendorId"
+  | "customerId"
 > & {
   categoryId: null;
   vatRateId: null;

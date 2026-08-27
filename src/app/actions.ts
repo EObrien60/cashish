@@ -36,6 +36,7 @@ import {
   deleteRule,
   reorderRule,
   applyRulesToAll,
+  RulePostingError,
   type RuleInput,
 } from "@/lib/rules";
 import {
@@ -399,10 +400,21 @@ export async function deleteReceiptAction(id: string) {
 
 // ---- Categorisation rules -------------------------------------------------
 
-export async function saveRuleAction(input: RuleInput) {
+export async function saveRuleAction(
+  input: RuleInput,
+): Promise<{ ok?: boolean; error?: string }> {
   return withCapability("books:write", async () => {
-    await saveRule(input);
+    try {
+      await saveRule(input);
+    } catch (e) {
+      // A rule contradicting its own posting kind is a form error, not a crash:
+      // the person typing needs to be told which field is missing.
+      if (e instanceof RulePostingError) return { error: e.message };
+      throw e;
+    }
     revalidatePath("/rules");
+    revalidatePath("/transactions");
+    return { ok: true };
   });
 }
 

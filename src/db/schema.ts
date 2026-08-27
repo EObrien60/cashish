@@ -169,6 +169,14 @@ export const transactions = pgTable(
     }),
     /** Who was paid, when it was a supplier rather than a person. */
     vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+    /**
+     * Who the money came from, when it was a customer.
+     *
+     * Vendors and employees attached directly to a transaction while customers
+     * only reached one through payments.transaction_id, so "who was this from"
+     * was answerable for money out and not for money in. This closes that.
+     */
+    customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
     importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(now),
   },
@@ -179,6 +187,7 @@ export const transactions = pgTable(
     index("tx_excluded_idx").on(t.tenantId, t.excluded),
     index("tx_employee_idx").on(t.tenantId, t.employeeId),
     index("tx_vendor_idx").on(t.tenantId, t.vendorId),
+    index("tx_customer_idx").on(t.tenantId, t.customerId),
   ],
 );
 
@@ -400,6 +409,28 @@ export const categoryRules = pgTable(
     }),
     /** Optional: also attach this vendor. Same trick, for suppliers. */
     vendorId: text("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+    /** Optional: the customer this money comes from. */
+    customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    /**
+     * What kind of thing the matched transaction IS, not merely how it is
+     * labelled. A rule used to carry dimensions — category, VAT, vendor,
+     * employee — and everything downstream had to re-derive the intent from
+     * them, which is how a rule naming a supplier but no vendor was possible.
+     *
+     * The kind decides which reference is REQUIRED (see src/lib/posting.ts), so
+     * an unattributed supplier rule cannot be saved at all.
+     */
+    posting: text("posting").notNull().default("other"),
+    /** For posting = "tax": which tax. vat | paye | ct | other. */
+    taxKind: text("tax_kind"),
+    /**
+     * For posting = "transfer": why this is not real income or expense.
+     *
+     * Rules could not exclude anything before this, so internal pot transfers
+     * needed a hand-maintained list in a script and came back uncategorised on
+     * the next import.
+     */
+    excludedReason: text("excluded_reason").default(""),
     sortOrder: integer("sort_order").notNull().default(0),
     timesApplied: integer("times_applied").notNull().default(0),
     createdAt: text("created_at").notNull().default(now),

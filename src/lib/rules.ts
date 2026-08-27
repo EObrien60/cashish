@@ -1,4 +1,11 @@
 import { db, first, schema } from "@/db/client";
+import {
+  POSTING_SPECS,
+  isPosting,
+  normalisePosting,
+  validatePosting,
+  type Posting,
+} from "./posting";
 import { tenantId } from "@/db/context";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { uid } from "./id";
@@ -28,7 +35,27 @@ export type RuleInput = {
   employeeId?: string | null;
   /** Optional: also attach this vendor. Same reasoning as employeeId. */
   vendorId?: string | null;
+  /** Optional: the customer this money comes from. */
+  customerId?: string | null;
+  /**
+   * What kind of transaction this is. Decides which of the references above is
+   * required — see src/lib/posting.ts. Defaults to "other", which is the old
+   * tag-only behaviour.
+   */
+  posting?: Posting;
+  /** For posting = "tax". */
+  taxKind?: string | null;
+  /** For posting = "transfer": why it is out of the books. */
+  excludedReason?: string | null;
 };
+
+/** Raised when a rule contradicts its own posting kind. */
+export class RulePostingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RulePostingError";
+  }
+}
 
 const ofTenant = () => eq(categoryRules.tenantId, tenantId());
 
@@ -41,6 +68,14 @@ export async function listRules() {
 }
 
 export async function saveRule(input: RuleInput) {
+  // Validate against the posting kind first, so a rule that cannot attribute
+  // what it matches never reaches the database.
+  const posting: Posting = isPosting(input.posting) ? input.posting : "other";
+  const problem = validatePosting({ ...input, posting });
+  if (problem) throw new RulePostingError(problem);
+  const normalised = normalisePosting({ ...input, posting });
+  input = { ...input, ...normalised, posting };
+
   if (input.id) {
     const { id, ...rest } = input;
     await db
@@ -162,25 +197,46 @@ export async function applyRulesToTransactions(
 
   await db.transaction(async (trx) => {
     for (const t of txs) {
-      if (opts.onlyUncategorized && t.categoryId) continue;
+      const ruleFor = firstMatch(rules, t);
+      // A transfer rule is allowed past the uncategorised filter: taking money
+      // out of the books is a correction, and it is most often needed precisely
+      // on rows something has already categorised.
+      const isTransfer = ruleFor && isPosting(ruleFor.posting)
+        && POSTING_SPECS[ruleFor.posting].excludes;
+      if (opts.onlyUncategorized && t.categoryId && !isTransfer) continue;
       // An excluded transaction is out of the books, so no rule gets to categorise it.
       if (t.excluded) continue;
-      const rule = firstMatch(rules, t);
+      const rule = ruleFor;
       if (!rule) continue;
       matched++;
       const before = t.categoryId ?? null;
       const after = rule.categoryId ?? null;
       if (before !== null && before !== after) recategorised++;
+      const spec = isPosting(rule.posting) ? POSTING_SPECS[rule.posting] : POSTING_SPECS.other;
       await trx
         .update(transactions)
-        .set({
-          categoryId: rule.categoryId ?? null,
-          vatRateId: rule.vatRateId ?? null,
-          // Only set when the rule names one. A rule that names neither must
-          // not clear an attribution made by hand.
-          ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
-          ...(rule.vendorId ? { vendorId: rule.vendorId } : {}),
-        })
+        .set(
+          spec.excludes
+            ? {
+                // A transfer is your own money moving. Counted nowhere, and the
+                // category goes with it, exactly as excluding by hand does.
+                // Rules could not do this before, so pot transfers needed a
+                // hand-maintained list in a script and came back on re-import.
+                excluded: true,
+                excludedReason: rule.excludedReason || "internal transfer",
+                categoryId: null,
+                vatRateId: null,
+              }
+            : {
+                categoryId: rule.categoryId ?? null,
+                vatRateId: rule.vatRateId ?? null,
+                // Only set when the rule names one. A rule that names nobody
+                // must not clear an attribution made by hand.
+                ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
+                ...(rule.vendorId ? { vendorId: rule.vendorId } : {}),
+                ...(rule.customerId ? { customerId: rule.customerId } : {}),
+              },
+        )
         .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
       updated++;
       applyCounts.set(rule.id, (applyCounts.get(rule.id) ?? 0) + 1);
