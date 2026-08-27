@@ -24,6 +24,9 @@ npx tsx scripts/qh/match-payments.ts --tenant quantumharbour --commit
 # 5. the product library, from the invoice lines
 npx tsx scripts/qh/products.ts --tenant quantumharbour --commit
 #    add --with-licences and/or --with-services to widen it
+
+# 6. repair the batch payments mis-allocated by the old one-to-one matcher
+npx tsx scripts/qh/repair-batch-payments.ts --tenant quantumharbour --commit
 ```
 
 Every script defaults to a dry run. `--commit` is required to write.
@@ -93,14 +96,47 @@ by an explicit map in the script, taken off the page by eye:
 | `HP ProDesk 2 SFF` | `HP ProDesk 2 SFF G1iEi5 1350016GB/256GB PC` |
 | `AOC 27" Monitor` | same item as `AOC 27P2Q 27" LED 1080p 75Hz Monitor` — merged |
 
+## J Ryan Haulage pays in batches
+
+Step 6 exists because of a wrong inference recorded here earlier. Eight J Ryan
+Haulage invoices showed as open (€12,483.25) and this file blamed the missing
+1014–1050 PDFs. The arithmetic says otherwise: the twelve invoices on file
+excluding the newest come to **€39,220.99**, and **€39,220.90** arrived. They were
+square all along, bar nine cent.
+
+They settle a month at a time — that month's retainer plus whatever else was
+outstanding — in one transfer:
+
+| transfer | settles |
+|---|---|
+| 2025-07-30 €3,669.00 | 1010 + 1011 + 1013 (nine cent short) |
+| 2025-08-27 €2,170.95 | 1052 + 1053 |
+| 2025-10-02 €2,904.01 | 1058 + 1059 |
+| 2025-11-26 €1,525.20 | 1061 |
+| 2025-12-17 €1,525.20 | 1062 |
+
+The old matcher bound one bank line to at most one invoice, so no batch could ever
+match. Worse, because the retainers are identical, the two lone €1,525.20 transfers
+were handed to the *oldest* unclaimed retainer — 1013 and 1053, both already paid by
+the July and August batches — and the invoices they really settled, 1061 and 1062,
+were left looking open. Nothing reported an error; the ledger was just wrong.
+
+`src/lib/reconcile.ts` now proposes batches, and step 6 converts the old allocation.
+It states the expected plan and refuses to write if the matcher proposes anything
+else, recognises an already-repaired ledger and stops, and will not touch a payment
+whose bank line settles more than one invoice. Dry run by default.
+
+After it: only **1071** (€3,739.20, raised 2026-07-26) is outstanding, plus nine cent
+stranded on 1013 — a genuine short payment, since 1010's total of €1,375.14 is
+€1,118 × 1.23 exactly.
+
 ## Known gaps
 
-- **Invoices 1014–1050 and 1065 are not in the PDFs.** They are almost
-  certainly why 39 inflows (€47,983.45) are categorised as Sales but cannot be
-  linked to an invoice, and why several large J Ryan Haulage inflows exceed any
-  single open invoice. Supply those documents and re-run step 4.
-- Eight invoices remain open (€12,483.25, of which €8,744.05 overdue), all J
-  Ryan Haulage. Seven are marked PAID on their PDF — see above.
+- **Invoices 1014–1050 and 1065 are not in the PDFs.** This is why a number of
+  2024-era inflows are categorised as Sales with no invoice to link them to. It is
+  *not* why the J Ryan Haulage invoices looked open — see above.
+- Seven invoices are stamped PAID on their PDF with no inflow that matches them.
+  Left open rather than settled with an invented payment.
 - Rules marked `[confirm]` in the script output are inferences, not facts read
   off a document. The people-payment and owner-payment ones matter most, because
   wages, contractor fees and director's drawings are taxed differently.

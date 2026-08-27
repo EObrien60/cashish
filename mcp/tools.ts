@@ -39,7 +39,7 @@ import {
   setInvoiceStatus,
 } from "../src/lib/invoices";
 import { buildIntegrationSummary } from "../src/lib/integration";
-import { openInvoices, reconcileReport, suggestMatches, unmatchedInflows } from "../src/lib/reconcile";
+import { applyBatchMatch, openInvoices, reconcileReport, unmatchedInflows } from "../src/lib/reconcile";
 import { dashboardStats, monthlyCashflow, profitAndLoss } from "../src/lib/reports";
 import {
   applyRulesToAll,
@@ -320,7 +320,7 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
     {
       title: "Reconcile bank inflows against invoices",
       description:
-        "The migration workhorse. Splits unmatched money received into three lists: inflows that confidently settle a known invoice, inflows that need a human decision, and inflows with no candidate at all — those usually need an invoice raising, possibly copied from the old system.",
+        "The migration workhorse. Splits unmatched money received into four lists: inflows that confidently settle a known invoice, transfers that settle SEVERAL invoices at once (batchMatches), inflows that need a human decision, and inflows with no candidate at all — those usually need an invoice raising, possibly copied from the old system. A batch is never confident: check the set and any shortfall, then write it with cashish_match_batch.",
       inputSchema: {
         from: z.string().optional(),
         to: z.string().optional(),
@@ -336,7 +336,7 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
       return text({
         ...report,
         hint: canWrite
-          ? "Use cashish_match_payment to settle a confident match, or cashish_create_invoice for one that needs an invoice."
+          ? "Use cashish_match_payment for a confident match, cashish_match_batch for one transfer covering several invoices, or cashish_create_invoice for money with no invoice behind it."
           : "Read-only: start with CASHISH_MCP_WRITE=true to act on these.",
       });
     },
@@ -675,6 +675,33 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
         note: note ?? "",
       });
       return text({ ok: true, invoice });
+    },
+  );
+
+  server.registerTool(
+    "cashish_match_batch",
+    {
+      title: "Match one bank inflow to several invoices",
+      description:
+        "Settles a batch: one transfer covering more than one invoice, as a client who pays the month's invoices in a single payment does. Comes from the batchMatches list in cashish_reconcile. Allocates oldest invoice first, so any shortfall lands on the newest of the set and leaves it partial. Refuses money out, a set of fewer than two invoices, and any invoice raised after the money arrived.",
+      inputSchema: {
+        transactionId: z.string(),
+        invoiceIds: z.array(z.string()).min(2).describe("Every invoice the transfer settles"),
+        date: z.string().optional().describe("Defaults to the transaction's booked date"),
+        note: z.string().optional(),
+      },
+    },
+    async ({ transactionId, invoiceIds, date, note }) => {
+      if (!canWrite) return writeGuard();
+      try {
+        const result = await applyBatchMatch(transactionId, invoiceIds, {
+          ...(date ? { date } : {}),
+          ...(note ? { note } : {}),
+        });
+        return text({ ok: true, ...result });
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : String(error));
+      }
     },
   );
 

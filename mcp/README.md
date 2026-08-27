@@ -133,15 +133,24 @@ restricted credential would.
 ### The reconciliation loop
 
 `cashish_reconcile` is the main workflow. It pairs bank inflows nothing has
-claimed against invoices still owed, and sorts the result into three buckets:
+claimed against invoices still owed, and sorts the result into four buckets:
 
 - **confidentMatches** — amount matches *and* the payer name appears in the
   transaction. Feed these straight to `cashish_match_payment`, which defaults the
   amount and date from the bank line and links the transaction to the payment.
+- **batchMatches** — one transfer settling *several* invoices, which is how a client
+  on a retainer who also buys ad hoc tends to pay. Each carries the exact set and any
+  `shortfall`. Never confident, however cleanly the arithmetic lands: check the set,
+  then write it with `cashish_match_batch`.
 - **needsDecision** — amount or name matches, but not both. Show these before acting.
 - **needsInvoice** — money arrived and no open invoice explains it. Either the
   invoice lives in the old system and should be copied in
   (`cashish_create_invoice` with the original `issueDate`), or it was never raised.
+
+A batch is only ever offered when no single open invoice explains the money, only
+across one customer's invoices, only from invoices that already existed when the money
+arrived, and at most four of them. `cashish_match_batch` settles them oldest first, so
+any shortfall lands on the newest invoice of the set and leaves it partial.
 
 `cashish_test_rule` is a dry run: it reports what a rule *would* catch, how many
 of those are still uncategorised, and how many another rule already claims —
