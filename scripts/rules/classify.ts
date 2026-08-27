@@ -108,8 +108,11 @@ async function main() {
         reason = `books to ${catName}`;
       } else if (cat?.kind === "income" && r.direction !== "out") {
         const aliasName = CUSTOMER_ALIASES.find(([re]) => re.test(r.matchValue))?.[1];
+        // Loose comparison, not equality: OBH's customer is "TripleBolt
+        // Technology LLC", so an exact match on "TripleBolt" found nothing and
+        // €35,000 of Gusto receipts stayed unattributed.
         const hit =
-          (aliasName ? customers.find((c) => c.name === aliasName) : undefined) ??
+          (aliasName ? customers.find((c) => looksLike(aliasName, c.name)) : undefined) ??
           customers.find((c) => looksLike(r.matchValue, c.name));
         if (hit) {
           posting = "sales_receipt";
