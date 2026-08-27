@@ -33,6 +33,7 @@ const flag = (n: string) => {
   return i !== -1 ? args[i + 1] : undefined;
 };
 const COMMIT = args.includes("--commit");
+const AUDIT = args.includes("--audit");
 
 type V = { name: string; matches: string[]; category?: string; note?: string };
 
@@ -68,6 +69,35 @@ const VENDORS: Record<string, V[]> = {
     { name: "Companies Registration Office", matches: ["COMPANIES REGISTRATION"], category: "cat-professional" },
     { name: "Upwork", matches: ["UPWRKESCROW"], category: "cat-professional" },
     { name: "Revolut", matches: ["REVOLUT BUSINESS FEE"], category: "cat-bank" },
+    { name: "Select Galway", matches: ["SELECT GALWAY"], category: "cat-cogs" },
+    { name: "CeX Galway", matches: ["CEX GALWAY"], category: "cat-cogs" },
+    { name: "G2A", matches: ["G2A"], category: "cat-cogs" },
+    { name: "K4G", matches: ["K4GCOM"], category: "cat-cogs" },
+    { name: "Apple", matches: ["APPLE.COM"], category: "cat-office" },
+    { name: "Currys", matches: ["CURRYS"], category: "cat-office" },
+    { name: "Amazon", matches: ["AMAZON"], category: "cat-office" },
+    { name: "IKEA", matches: ["IKEA"], category: "cat-office" },
+    { name: "UPS", matches: ["UPS IE"], category: "cat-office" },
+    { name: "Trip.com", matches: ["TRIP.COM"], category: "cat-travel" },
+    { name: "Premier Inn", matches: ["PREMIER INN"], category: "cat-travel" },
+    {
+      name: "Revenue Commissioners",
+      matches: ["REVENUE COMMISSIONERS"],
+      category: "cat-tax",
+      note: "Not a supplier, but the largest single outflow — worth attributing so /vendors accounts for it.",
+    },
+    {
+      name: "Revenue Sheriff (Padraic Brennan)",
+      matches: ["REVENUE SHERIFF"],
+      category: "cat-tax",
+      note: "A separate payee from Revenue itself; a sheriff payment means enforcement.",
+    },
+    {
+      name: "O'Brien Hughes Software Consulting",
+      matches: ["TO O'BRIEN HUGHES"],
+      category: "cat-professional",
+      note: "Your other company.",
+    },
   ],
   obh: [
     { name: "Buzzworks Design Studio", matches: ["Buzzworks"], category: "cat-marketing" },
@@ -80,8 +110,10 @@ const VENDORS: Record<string, V[]> = {
     { name: "Hetzner Online", matches: ["Hetzner"], category: "cat-software" },
     {
       name: "Galway City Innovation District",
-      // The bank shortens it to "Gcid" on most lines.
-      matches: ["GALWAY CITY INNOVATION", "Gcid"],
+      // The bank shortens it to "Gcid" on most lines. The third entry is the
+      // exact matchValue of the existing regex rule, so the RULE gets linked
+      // too and future imports attribute themselves.
+      matches: ["gcid|galway city innovation", "GALWAY CITY INNOVATION", "Gcid"],
       category: "cat-rent",
     },
     { name: "Anthropic", matches: ["Claude.ai", "Anthropic"], category: "cat-software" },
@@ -92,8 +124,66 @@ const VENDORS: Record<string, V[]> = {
       matches: ["CUFFE & COMPANY"],
       category: "cat-professional",
     },
+    { name: "Intuit QuickBooks", matches: ["Intuit"], category: "cat-software" },
+    { name: "Replit", matches: ["Replit"], category: "cat-software" },
+    { name: "Sage Ireland", matches: ["Sage Ireland"], category: "cat-software" },
+    { name: "Microsoft", matches: ["Microsoft"], category: "cat-software" },
+    { name: "Vercel", matches: ["Vercel"], category: "cat-software" },
+    { name: "n8n", matches: ["N8n"], category: "cat-software" },
+    { name: "Google Workspace", matches: ["Google Workspace"], category: "cat-software" },
+    { name: "Namecheap", matches: ["Name-cheap"], category: "cat-software" },
+    { name: "Blacknight", matches: ["Blacknight"], category: "cat-software" },
+    { name: "Currys", matches: ["Currys"], category: "cat-office" },
+    { name: "Ryanair", matches: ["Ryanair"], category: "cat-travel" },
+    { name: "Three Ireland", matches: ["Three Ireland"], category: "cat-rent" },
+    { name: "Revolut", matches: ["Revolut Business Fee"], category: "cat-bank" },
+    {
+      name: "Revenue Commissioners",
+      matches: ["Revenue Commissioners"],
+      category: "cat-tax",
+      note: "Not a supplier, but the largest single outflow — worth attributing so /vendors accounts for it.",
+    },
   ],
 };
+
+/**
+ * Lists expense rules that attribute money to neither a vendor nor a person.
+ *
+ * Exists because the gap is invisible otherwise: a rule can categorise spend
+ * perfectly and still leave /vendors unable to say who was paid, and nobody
+ * notices until they look at the vendor list and find it short.
+ */
+async function audit(slug: string) {
+  const { ruleMatches } = await import("../../src/lib/rules");
+  const rules = await listRules();
+  const txs = await listTransactions({ excluded: "all" });
+  const cats = new Map((await listCategories()).map((c) => [c.id, c]));
+  const vendors = await listVendors({ includeArchived: true });
+
+  const gap = rules.filter(
+    (r) =>
+      !r.vendorId &&
+      !r.employeeId &&
+      cats.get(r.categoryId ?? "")?.kind === "expense" &&
+      txs.some((x) => ruleMatches(r as never, x as never)),
+  );
+  const dead = rules.filter((r) => !txs.some((x) => ruleMatches(r as never, x as never)));
+
+  console.log(`${slug}: ${rules.length} rules, ${vendors.length} vendors`);
+  console.log(`  expense rules attributing to nobody: ${gap.length}`);
+  for (const r of gap) {
+    const hits = txs.filter((x) => !x.excluded && x.amount < 0 && ruleMatches(r as never, x as never));
+    const total = round2(hits.reduce((s2, x) => s2 + Math.abs(x.amount), 0));
+    console.log(
+      `    ${String(total).padStart(11)} x${String(hits.length).padStart(3)}  ` +
+        `${(cats.get(r.categoryId ?? "")?.name ?? "—").padEnd(26)} "${r.matchValue}"`,
+    );
+  }
+  if (dead.length) {
+    console.log(`  rules matching nothing (check the match type): ${dead.length}`);
+    for (const r of dead) console.log(`    "${r.matchValue}" (${r.matchType})`);
+  }
+}
 
 async function main() {
   const slug = flag("tenant");
@@ -105,6 +195,14 @@ async function main() {
   if (!tenant) {
     console.error(`no tenant "${slug}"`);
     process.exit(1);
+  }
+
+  if (AUDIT) {
+    await runInTenant({ tenantId: tenant.id, role: "owner", actor: "vendor-audit" }, () =>
+      audit(slug),
+    );
+    await pool.end();
+    return;
   }
 
   console.log(`${COMMIT ? "COMMITTING to" : "DRY RUN against"} ${slug}\n`);

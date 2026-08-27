@@ -28,16 +28,35 @@ pot transfers. A wrong vendor is more annoying to unpick than a missing one, so
 the script prints whatever outgoing payments remain unattributed and leaves the
 judgement to a person.
 
+## Auditing the gap
+
+```sh
+npx tsx scripts/vendors/setup.ts --tenant obh --audit
+```
+
+Lists expense rules that attribute money to neither a vendor nor a person, and
+any rule matching nothing at all. This exists because the gap is otherwise
+invisible: a rule can categorise spend perfectly and still leave the vendor list
+short, and nobody notices until they count. The first pass here left 15 such
+rules in OBH and 14 in QuantumHarbour. Both are now zero.
+
 ## Results
 
 | | vendors | attributed |
 |---|---|---|
-| QuantumHarbour | 30 | €60,769.23 |
-| OBH Software | 8 | €31,554.53 |
+| QuantumHarbour | 44 | €79,328.81 |
+| OBH Software | 22 | €50,410.23 |
 
-What remains unattributed in both is Revenue and staff — staff are people, not
-vendors, and are attributed under Payroll instead — plus a handful of one-off
-purchases where a vendor record would be more clutter than help.
+Revenue Commissioners is included as a vendor. It is not a supplier, but it is
+the single largest outflow in both businesses, and leaving it out meant the
+vendor list could not account for where most of the money went. The category
+still says Taxes & Revenue, so nothing is misclassified. The Revenue Sheriff is
+a separate vendor from Revenue itself, because it is a separate payee — and a
+sheriff payment means enforcement.
+
+What remains unattributed is staff, who are people rather than vendors and are
+attributed under Payroll instead, plus own-account currency transfers and a few
+genuine one-offs.
 
 Two things worth knowing:
 
