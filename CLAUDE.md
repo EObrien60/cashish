@@ -20,19 +20,30 @@ server.
 
 ## Directory map
 
+An npm workspace. `@cashish/core` holds everything a second application would
+otherwise have to duplicate; the domain stays in the app that owns it.
+
 ```
-src/db/          schema.ts (drizzle), client.ts (the only DB coupling),
-                 context.ts (tenant AsyncLocalStorage), seed.ts (per-tenant seed)
-src/lib/         the domain: transactions, rules, invoices, reconcile, vat,
-                 reports, recurring, payroll, integration, receipts
-                 plus auth.ts, session.ts, rbac.ts, oauth.ts, request-context.ts
-src/app/         pages, server actions (actions.ts, auth-actions.ts), API routes
-src/components/  React components, client and server
-src/middleware.ts  the session gate (must live under src/, not the repo root)
-mcp/             tools.ts (one definition), stdio.ts (local transport)
-scripts/         migrate, bootstrap, cloud-import, api-key, set-password, seed-scratch
-drizzle/         generated migrations — never edited by hand
-tests/           node:test against real Postgres
+packages/core/               @cashish/core — imported by every app
+  src/db/schema.ts           every table, for the whole deployment
+  src/db/client.ts           the only DB coupling (lazy pool)
+  src/db/context.ts          tenant AsyncLocalStorage
+  src/db/index.ts            the "@cashish/core/db" entry point
+  src/rbac.ts                roles and capabilities
+  src/migrate.ts             the migrator, callable; scripts/migrate.ts wraps it
+  drizzle/                   generated migrations — never edited by hand
+
+apps/books/                  the accounting app
+  src/db/seed.ts             per-tenant seed (VAT rates, categories) — domain
+  src/lib/                   the domain: transactions, rules, invoices, reconcile,
+                             vat, reports, recurring, payroll, integration,
+                             receipts, plus auth, session, oauth, request-context
+  src/app/                   pages, server actions, API routes
+  src/components/            React components, client and server
+  src/middleware.ts          the session gate (must live under src/, not app root)
+  mcp/                       tools.ts (one definition), stdio.ts (local transport)
+  scripts/                   bootstrap, cloud-import, api-key, set-password
+  tests/                     node:test against real Postgres
 ```
 
 ## Running it
@@ -53,9 +64,12 @@ npm run bootstrap -- --slug dev --name "Dev Books" \
 npm run dev
 ```
 
+Every command below runs from the repository root and delegates to the right
+workspace; add `-w @cashish/books` or `-w @cashish/core` to target one directly.
+
 | command | what it does |
 |---|---|
-| `npm run dev` / `build` / `start` | the usual Next.js three |
+| `npm run dev` / `build` / `start` | the usual Next.js three, on `apps/books` |
 | `npm test` | the suite, against `cashish_test` |
 | `npm run db:generate` | generate a migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | apply pending migrations |
@@ -80,7 +94,7 @@ npm run dev
 ## Conventions specific to this repo
 
 **Every query is tenant-scoped, and the tenant comes from context.** `src/lib/*`
-reads it via `tenantId()` from `src/db/context.ts`, which **throws** when there
+reads it via `tenantId()` from `@cashish/core/db`, which **throws** when there
 is no tenant in scope. That is deliberate: a query outside a request fails loudly
 rather than quietly reading every book in the database. Entry points establish
 the context with `withTenant` / `withCapability` (`src/lib/request-context.ts`)
@@ -92,7 +106,7 @@ Postgres RLS, so `tests/tenancy.test.ts` is load-bearing — keep it passing.
 the tenant filter.
 
 **Permissions live in exactly one place:** the capability map in
-`src/lib/rbac.ts`. Use `requireCapability` / `can`, never an inline role check.
+`packages/core/src/rbac.ts`, imported as `@cashish/core/rbac`. Use `requireCapability` / `can`, never an inline role check.
 The MCP tools consult the same map, which is what makes "a viewer API key cannot
 write" true by construction.
 
@@ -103,12 +117,21 @@ are compared lexicographically as ISO strings throughout the query layer, so
 `timestamptz` would silently change reconciliation, VAT periods and recurring
 due dates.
 
-**`src/db/client.ts` is lazy on purpose.** `next build` imports every route
+**`@cashish/core`'s `client.ts` is lazy on purpose.** `next build` imports every route
 module to read its config, so a connection — or a thrown "DATABASE_URL is not
 set" — at module scope makes the build require a database it never queries.
 
-**Migrations only.** No DDL at request time. Edit `src/db/schema.ts`, then
-`npm run db:generate`, and commit the generated SQL.
+**The schema lives in `packages/core`, and only there.** Both the books app
+and anything added later import `@cashish/core/db`; no app declares a table. One
+database has one schema and one migration journal, and a schema copied into an
+app is a schema that drifts on the first migration somebody forgets to mirror.
+
+**Migrations only.** No DDL at request time. Edit
+`packages/core/src/db/schema.ts`, then `npm run db:generate`, and commit the
+generated SQL. The migrator resolves its folder against its own module rather
+than the working directory — drizzle treats a folder that is not there as
+"nothing pending", so a cwd-relative path would report success and apply
+nothing.
 
 **`src/middleware.ts` must stay under `src/`.** Next.js looks for it beside the
 app directory; at the repository root it is silently ignored, and the session

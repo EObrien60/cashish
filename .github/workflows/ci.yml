@@ -1,9 +1,12 @@
 name: CI
 
-# Gates the merge that deploys. The Vercel build command is
-# `npm run db:migrate && npm run build`, so landing on main migrates the
-# production database and then ships — there is no step after this one at which
-# a broken migration or a failing test gets caught.
+# Gates the merge.
+#
+# NOTE: merging does NOT deploy. The Vercel project has no GitHub connection
+# (`link: null`), so production ships by `vercel --prod` by hand, and the build
+# command `npm run db:migrate && npm run build` runs then rather than on merge.
+# This is still the last automated check before a human ships, so it is the step
+# at which a broken migration or a failing test has to be caught.
 on:
   pull_request:
   push:
@@ -52,8 +55,10 @@ jobs:
 
       - run: npm ci
 
+      # No tsconfig at the repository root since the workspace split; each
+      # workspace is checked against its own.
       - name: Types
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit -p apps/books/tsconfig.json
 
       # Runs the migrations first via the pretest hook, which also proves the
       # migration path works on an empty database — the thing the Vercel build
