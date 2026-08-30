@@ -1,0 +1,65 @@
+name: CI
+
+# Gates the merge that deploys. The Vercel build command is
+# `npm run db:migrate && npm run build`, so landing on main migrates the
+# production database and then ships — there is no step after this one at which
+# a broken migration or a failing test gets caught.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The suite runs against real Postgres because that is what production runs.
+    # Testing SQLite while shipping Postgres is how a rounding or boolean bug
+    # reaches the books unnoticed, which is why the harness refuses anything else.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cashish
+          POSTGRES_PASSWORD: cashish
+          POSTGRES_DB: cashish_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cashish -d cashish_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # The harness refuses a DATABASE_URL that does not name a test database, so
+      # a misconfigured job fails loudly instead of quietly pointing at real books.
+      DATABASE_URL: postgres://cashish:cashish@127.0.0.1:5432/cashish_test
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else-0000000000
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # matches the Vercel project's Node version
+          cache: npm
+
+      - run: npm ci
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      # Runs the migrations first via the pretest hook, which also proves the
+      # migration path works on an empty database — the thing the Vercel build
+      # does to production on every deploy.
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

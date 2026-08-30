@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTransition } from "react";
+import { can, type Role } from "@/lib/rbac";
 import {
   IconDashboard,
   IconLedger,
@@ -38,6 +40,10 @@ const SECTIONS: {
       { href: "/products", label: "Products", icon: IconBox },
     ],
   },
+  {
+    label: "Purchases",
+    items: [{ href: "/vendors", label: "Vendors", icon: IconBox }],
+  },
   { label: "People", items: [{ href: "/payroll", label: "Payroll", icon: IconPayroll }] },
   {
     label: "Reporting",
@@ -49,10 +55,28 @@ const SECTIONS: {
   { label: null, items: [{ href: "/settings", label: "Settings", icon: IconSettings }] },
 ];
 
-export function Sidebar() {
+type Props = {
+  role: Role;
+  tenants: { id: string; name: string }[];
+  activeTenantId: string | null;
+  switchTenant: (tenantId: string) => Promise<void>;
+  logout: () => Promise<void>;
+};
+
+export function Sidebar({ role, tenants, activeTenantId, switchTenant, logout }: Props) {
   const path = usePathname();
+  const [, start] = useTransition();
   const isActive = (href: string) =>
     href === "/" ? path === "/" : path.startsWith(href);
+
+  // A viewer is shown the whole navigation but the write affordances inside each
+  // page are gated; hiding Settings would just make the app look broken to them.
+  const visible = SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter(
+      (item) => item.href !== "/settings" || can(role, "settings:write") || can(role, "tenant:admin"),
+    ),
+  })).filter((section) => section.items.length > 0);
 
   return (
     <aside className="no-print fixed inset-y-0 left-0 flex w-60 flex-col border-r border-line bg-card">
@@ -70,8 +94,33 @@ export function Sidebar() {
         </div>
       </div>
 
+      {tenants.length > 1 && (
+        <div className="border-b border-line px-3 py-2">
+          <label className="sr-only" htmlFor="tenant-switch">
+            Business
+          </label>
+          <select
+            id="tenant-switch"
+            value={activeTenantId ?? ""}
+            onChange={(event) => {
+              const next = event.target.value;
+              start(async () => {
+                await switchTenant(next);
+              });
+            }}
+            className="w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm"
+          >
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <nav className="flex-1 overflow-y-auto p-3">
-        {SECTIONS.map((section, i) => (
+        {visible.map((section, i) => (
           <div key={i} className="nav-group">
             {section.label && (
               <div className="nav-section">{section.label}</div>
@@ -100,8 +149,24 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-4 text-[11px] text-ink-faint border-t border-line">
-        EUR · Ireland · cash basis VAT
+      <div className="border-t border-line p-4">
+        {tenants.length === 1 && (
+          <div className="mb-2 truncate text-xs font-medium">{tenants[0].name}</div>
+        )}
+        <Link href="/businesses" className="mb-2 block text-[11px] text-ink-faint underline hover:text-ink">
+          Businesses
+        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-ink-faint">{role}</span>
+          <button
+            type="button"
+            onClick={() => start(async () => { await logout(); })}
+            className="text-[11px] text-ink-faint underline hover:text-ink"
+          >
+            Sign out
+          </button>
+        </div>
+        <div className="mt-2 text-[11px] text-ink-faint">EUR · Ireland · cash basis VAT</div>
       </div>
     </aside>
   );

@@ -12,7 +12,12 @@ data
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
-drizzle/meta
+# drizzle/meta is deliberately COMMITTED. _journal.json is what tells the migrator
+# which migrations exist, and the snapshots are what drizzle-kit diffs to generate
+# the next one. Ignoring them meant a clean checkout could not migrate at all: the
+# CLI uploads the working directory using its own ignore list rather than this file,
+# so a laptop's untracked journal shipped with every deploy and hid the gap. It
+# surfaced the moment CI built from git.
 
 # Real bank statements contain private financial data — never commit them.
 # (Keep your sample locally; it's just the import format reference.)
@@ -23,3 +28,14 @@ account-statement*.csv
 # Electron build intermediates (the .icns + logo source are committed)
 build/icon-1024.png
 build/*.iconset
+cashish-scratch.db*
+cashish-summary.json
+cashish-test.db*
+
+# Local Postgres data dir for the dev container, and blob fallback
+data/
+.env*.local
+.vercel
+
+# Private project notes
+CLAUDE.local.md

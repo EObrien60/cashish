@@ -6,9 +6,23 @@ import type { Transaction } from "@/db/schema";
 // an overlapping statement is safe: we key on id and only the unseen rows get
 // inserted (see lib/transactions.ts importTransactions).
 
+// tenantId is excluded deliberately: a parsed CSV row knows nothing about which
+// tenant is importing it. importTransactions() stamps it from the tenant context.
 export type ParsedRow = Omit<
   Transaction,
-  "categoryId" | "vatRateId" | "note" | "reconciled" | "createdAt"
+  | "categoryId"
+  | "vatRateId"
+  | "note"
+  | "reconciled"
+  | "createdAt"
+  | "excluded"
+  | "excludedReason"
+  | "tenantId"
+  // A parsed statement row knows nothing about who a payment went to; that is
+  // attached afterwards, by hand or by a rule.
+  | "employeeId"
+  | "vendorId"
+  | "customerId"
 > & {
   categoryId: null;
   vatRateId: null;

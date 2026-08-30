@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Employee } from "@/db/schema";
 import { money, fmtDate } from "@/lib/format";
@@ -37,7 +38,16 @@ const BLANK: Form = {
   prsiClass: "A",
 };
 
-export function EmployeesView({ employees }: { employees: Employee[] }) {
+type Paid = { paid: number; count: number; last: string };
+
+export function EmployeesView({
+  employees,
+  paid = {},
+}: {
+  employees: Employee[];
+  /** Bank payments attached to each employee, keyed by id. */
+  paid?: Record<string, Paid>;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -136,6 +146,8 @@ export function EmployeesView({ employees }: { employees: Employee[] }) {
                 <th className="th">Type</th>
                 <th className="th">PRSI</th>
                 <th className="th text-right">Monthly gross</th>
+                <th className="th text-right">Paid from bank</th>
+                <th className="th text-right">Payments</th>
                 <th className="th">Status</th>
                 <th className="th w-16"></th>
               </tr>
@@ -144,7 +156,12 @@ export function EmployeesView({ employees }: { employees: Employee[] }) {
               {employees.map((e) => (
                 <tr key={e.id} className={`hover:bg-paper/50 ${e.status === "leaver" ? "opacity-60" : ""}`}>
                   <td className="td font-medium">
-                    {e.firstName} {e.familyName}
+                    <Link
+                      href={`/payroll/employees/${e.id}`}
+                      className="text-brand hover:underline"
+                    >
+                      {e.firstName} {e.familyName}
+                    </Link>
                     <div className="text-xs text-ink-faint">Empl. ID {e.employmentId}</div>
                   </td>
                   <td className="td tabular text-ink-soft">{e.ppsn || "—"}</td>
@@ -157,6 +174,12 @@ export function EmployeesView({ employees }: { employees: Employee[] }) {
                   </td>
                   <td className="td text-ink-soft">Class {e.prsiClass}</td>
                   <td className="td text-right tabular">{money(e.standardGross)}</td>
+                  <td className="td text-right tabular">
+                    {paid[e.id] ? money(paid[e.id].paid) : "—"}
+                  </td>
+                  <td className="td text-right tabular text-ink-soft">
+                    {paid[e.id]?.count ?? "—"}
+                  </td>
                   <td className="td">
                     <span className={`badge ${e.status === "active" ? "bg-brand-wash text-brand-dark" : "bg-black/5 text-ink-faint"}`}>
                       {e.status}

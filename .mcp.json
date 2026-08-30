@@ -1,0 +1,9 @@
+{
+  "//": "The LOCAL stdio server, for working against a dev or scratch database. It reads DATABASE_URL and CASHISH_TENANT from your shell — no credentials live in this file, because it is committed. For the deployed books, add the HTTP server with an API key instead (see mcp/README.md); that keeps the key in your own Claude Code config rather than in the repo.",
+  "mcpServers": {
+    "cashish-local": {
+      "command": "npx",
+      "args": ["tsx", "mcp/stdio.ts"]
+    }
+  }
+}

@@ -1,4 +1,5 @@
-import { db, schema } from "@/db/client";
+import { db, first, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
 import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { uid } from "./id";
 import { todayISO, addDays } from "./format";
@@ -48,11 +49,12 @@ export type RecurringInput = {
   lines: LineInput[];
 };
 
-export function saveRecurring(input: RecurringInput) {
+export async function saveRecurring(input: RecurringInput) {
   const id = input.id ?? uid();
-  db.transaction((trx) => {
+  const tid = tenantId();
+  await db.transaction(async (trx) => {
     if (input.id) {
-      trx
+      await trx
         .update(recurringInvoices)
         .set({
           name: input.name,
@@ -67,13 +69,13 @@ export function saveRecurring(input: RecurringInput) {
           notes: input.notes ?? "",
           terms: input.terms ?? "",
         })
-        .where(eq(recurringInvoices.id, id))
-        .run();
+        .where(and(eq(recurringInvoices.tenantId, tid), eq(recurringInvoices.id, id)));
     } else {
-      trx
+      await trx
         .insert(recurringInvoices)
         .values({
           id,
+          tenantId: tid,
           name: input.name,
           customerId: input.customerId,
           status: "active",
@@ -88,15 +90,21 @@ export function saveRecurring(input: RecurringInput) {
           autoSend: input.autoSend,
           notes: input.notes ?? "",
           terms: input.terms ?? "",
-        })
-        .run();
+        });
     }
-    trx.delete(recurringInvoiceLines).where(eq(recurringInvoiceLines.recurringId, id)).run();
-    input.lines.forEach((l, i) => {
-      trx
-        .insert(recurringInvoiceLines)
-        .values({
+    await trx
+      .delete(recurringInvoiceLines)
+      .where(
+        and(
+          eq(recurringInvoiceLines.tenantId, tid),
+          eq(recurringInvoiceLines.recurringId, id),
+        ),
+      );
+    if (input.lines.length) {
+      await trx.insert(recurringInvoiceLines).values(
+        input.lines.map((l, i) => ({
           id: uid(),
+          tenantId: tid,
           recurringId: id,
           productId: l.productId ?? null,
           description: l.description,
@@ -104,32 +112,44 @@ export function saveRecurring(input: RecurringInput) {
           unitPrice: l.unitPrice,
           vatRateId: l.vatRateId ?? null,
           sortOrder: i,
-        })
-        .run();
-    });
+        })),
+      );
+    }
   });
   return getRecurring(id);
 }
 
-export function getRecurring(id: string) {
-  const rec = db.select().from(recurringInvoices).where(eq(recurringInvoices.id, id)).get();
+export async function getRecurring(id: string) {
+  const tid = tenantId();
+  const rec = first(
+    await db
+      .select()
+      .from(recurringInvoices)
+      .where(and(eq(recurringInvoices.tenantId, tid), eq(recurringInvoices.id, id)))
+      .limit(1),
+  );
   if (!rec) return null;
-  const lines = db
+  const lines = await db
     .select()
     .from(recurringInvoiceLines)
-    .where(eq(recurringInvoiceLines.recurringId, id))
-    .orderBy(asc(recurringInvoiceLines.sortOrder))
-    .all();
+    .where(
+      and(eq(recurringInvoiceLines.tenantId, tid), eq(recurringInvoiceLines.recurringId, id)),
+    )
+    .orderBy(asc(recurringInvoiceLines.sortOrder));
   return { ...rec, lines };
 }
 
-export function listRecurring() {
-  const recs = db
-    .select()
-    .from(recurringInvoices)
-    .orderBy(desc(recurringInvoices.createdAt))
-    .all();
-  const custs = new Map(db.select().from(customers).all().map((c) => [c.id, c]));
+export async function listRecurring() {
+  const tid = tenantId();
+  const [recs, custRows] = await Promise.all([
+    db
+      .select()
+      .from(recurringInvoices)
+      .where(eq(recurringInvoices.tenantId, tid))
+      .orderBy(desc(recurringInvoices.createdAt)),
+    db.select().from(customers).where(eq(customers.tenantId, tid)),
+  ]);
+  const custs = new Map(custRows.map((c) => [c.id, c]));
   return recs.map((r) => ({
     ...r,
     customerName: custs.get(r.customerId)?.name ?? "—",
@@ -137,25 +157,43 @@ export function listRecurring() {
   }));
 }
 
-export function setRecurringStatus(id: string, status: "active" | "paused") {
-  db.update(recurringInvoices).set({ status }).where(eq(recurringInvoices.id, id)).run();
+export async function setRecurringStatus(id: string, status: "active" | "paused") {
+  await db
+    .update(recurringInvoices)
+    .set({ status })
+    .where(and(eq(recurringInvoices.tenantId, tenantId()), eq(recurringInvoices.id, id)));
 }
 
-export function deleteRecurring(id: string) {
-  db.transaction((trx) => {
-    trx.delete(recurringInvoiceLines).where(eq(recurringInvoiceLines.recurringId, id)).run();
-    trx.delete(recurringInvoices).where(eq(recurringInvoices.id, id)).run();
+export async function deleteRecurring(id: string) {
+  const tid = tenantId();
+  await db.transaction(async (trx) => {
+    await trx
+      .delete(recurringInvoiceLines)
+      .where(
+        and(
+          eq(recurringInvoiceLines.tenantId, tid),
+          eq(recurringInvoiceLines.recurringId, id),
+        ),
+      );
+    await trx
+      .delete(recurringInvoices)
+      .where(and(eq(recurringInvoices.tenantId, tid), eq(recurringInvoices.id, id)));
   });
 }
 
 // How many invoices are pending generation right now (across all profiles),
 // catching up any periods missed while the app was closed.
-export function countDue(refISO = todayISO()): number {
-  const due = db
+export async function countDue(refISO = todayISO()): Promise<number> {
+  const due = await db
     .select()
     .from(recurringInvoices)
-    .where(and(eq(recurringInvoices.status, "active"), lte(recurringInvoices.nextRunDate, refISO)))
-    .all();
+    .where(
+      and(
+        eq(recurringInvoices.tenantId, tenantId()),
+        eq(recurringInvoices.status, "active"),
+        lte(recurringInvoices.nextRunDate, refISO),
+      ),
+    );
   let total = 0;
   for (const r of due) {
     let next = r.nextRunDate;
@@ -177,22 +215,32 @@ export type GenerateResult = { generated: number; profiles: number };
 
 // Generate all due invoices (with catch-up). Each becomes a real invoice via
 // the normal createInvoice path, so totals/VAT are computed identically.
-export function generateDue(refISO = todayISO()): GenerateResult {
-  const due = db
+export async function generateDue(refISO = todayISO()): Promise<GenerateResult> {
+  const tid = tenantId();
+  const due = await db
     .select()
     .from(recurringInvoices)
-    .where(and(eq(recurringInvoices.status, "active"), lte(recurringInvoices.nextRunDate, refISO)))
-    .all();
+    .where(
+      and(
+        eq(recurringInvoices.tenantId, tid),
+        eq(recurringInvoices.status, "active"),
+        lte(recurringInvoices.nextRunDate, refISO),
+      ),
+    );
 
   let generated = 0;
   let profiles = 0;
   for (const r of due) {
-    const tmplLines = db
+    const tmplLines = await db
       .select()
       .from(recurringInvoiceLines)
-      .where(eq(recurringInvoiceLines.recurringId, r.id))
-      .orderBy(asc(recurringInvoiceLines.sortOrder))
-      .all();
+      .where(
+        and(
+          eq(recurringInvoiceLines.tenantId, tid),
+          eq(recurringInvoiceLines.recurringId, r.id),
+        ),
+      )
+      .orderBy(asc(recurringInvoiceLines.sortOrder));
     const lineInputs: LineInput[] = tmplLines.map((l) => ({
       productId: l.productId,
       description: l.description,
@@ -211,7 +259,7 @@ export function generateDue(refISO = todayISO()): GenerateResult {
       (!r.endDate || next <= r.endDate) &&
       (r.occurrencesLimit == null || count < r.occurrencesLimit)
     ) {
-      createInvoice({
+      await createInvoice({
         customerId: r.customerId,
         status: r.autoSend ? "sent" : "draft",
         issueDate: next,
@@ -231,14 +279,14 @@ export function generateDue(refISO = todayISO()): GenerateResult {
       const exhausted =
         (r.endDate && next > r.endDate) ||
         (r.occurrencesLimit != null && count >= r.occurrencesLimit);
-      db.update(recurringInvoices)
+      await db
+        .update(recurringInvoices)
         .set({
           nextRunDate: next,
           occurrencesCount: count,
           status: exhausted ? "paused" : "active",
         })
-        .where(eq(recurringInvoices.id, r.id))
-        .run();
+        .where(and(eq(recurringInvoices.tenantId, tid), eq(recurringInvoices.id, r.id)));
     }
   }
   return { generated, profiles };

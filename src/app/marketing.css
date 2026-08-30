@@ -1,0 +1,213 @@
+/* ---------------------------------------------------------------------------
+   The public site.
+   
+   Direction: a ledger. Warm paper, hairline rules, real tabular figures, and
+   the product's own output as the hero rather than a stock illustration — an
+   accounting tool should look like the thing it replaces, only well set.
+   
+   Scoped under .mk so none of it can leak into the app's own screens.
+   --------------------------------------------------------------------------- */
+
+.mk {
+  --rule: #ddd8ca;
+  --rule-soft: #e9e5da;
+  --paper: #f7f5ef;
+  --paper-deep: #efece1;
+  --ink: #10221b;
+  --ink-soft: #33473f;
+  --ink-faint: #6b7d76;
+  --brand: #0f7b5f;
+  --brand-dark: #0a5c47;
+  --out: #c0492f;
+  --display: var(--font-display), Georgia, serif;
+  --body: var(--font-body), system-ui, sans-serif;
+  --figure: var(--font-figure), ui-monospace, monospace;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+}
+
+/* Ruled paper: a hairline grid, like accounting stationery.
+   
+   Drawn on a pseudo-element rather than on the section itself. Masking the
+   section would fade its CONTENT — the first attempt washed out the hero
+   buttons and the bottom half of the document — so the mask has to live on a
+   layer that holds nothing but the background. */
+.mk-ruled {
+  position: relative;
+  isolation: isolate;
+}
+.mk-ruled::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to bottom, var(--rule-soft) 1px, transparent 1px),
+    linear-gradient(to right, var(--rule-soft) 1px, transparent 1px);
+  background-size: 100% 2rem, 2rem 100%;
+  background-position: 0 -1px, -1px 0;
+}
+.mk-ruled-fade::before {
+  mask-image: linear-gradient(to bottom, black 30%, transparent 88%);
+  -webkit-mask-image: linear-gradient(to bottom, black 30%, transparent 88%);
+}
+
+.mk h1,
+.mk h2,
+.mk h3,
+.mk .mk-display {
+  font-family: var(--display);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  font-variation-settings: "SOFT" 20, "WONK" 1;
+}
+
+.mk-figure {
+  font-family: var(--figure);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  /* Monospace gives the comma and full stop a whole glyph width each, so a large
+     total reads as "€2 , 105 . 76". Pulling the tracking in restores it without
+     giving up the column alignment tabular figures exist for. */
+  letter-spacing: -0.02em;
+}
+.mk-figure-lg {
+  letter-spacing: -0.045em;
+}
+
+/* A small-caps kicker above a heading, with a rule running off to the right —
+   the way a column is labelled in a printed report. */
+.mk-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brand-dark);
+}
+.mk-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.mk-hairline {
+  border-top: 1px solid var(--rule);
+}
+
+/* The hero artefact: a VAT return that actually adds up. */
+.mk-doc {
+  background: #fff;
+  border: 1px solid var(--rule);
+  box-shadow:
+    0 1px 0 rgba(16, 34, 27, 0.03),
+    0 18px 50px -28px rgba(16, 34, 27, 0.28);
+}
+.mk-doc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dotted var(--rule);
+}
+.mk-doc-row:last-child {
+  border-bottom: 0;
+}
+.mk-doc-total {
+  border-top: 2px solid var(--ink);
+  border-bottom: 0;
+  margin-top: 0.35rem;
+  padding-top: 0.6rem;
+  font-weight: 600;
+}
+
+/* Buttons, matched to the app's but sized for a landing page. */
+.mk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding: 0.7rem 1.15rem;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+.mk-btn:active {
+  transform: translateY(1px);
+}
+.mk-btn-primary {
+  background: var(--ink);
+  color: #f7f5ef;
+}
+.mk-btn-primary:hover {
+  background: var(--brand-dark);
+}
+.mk-btn-ghost {
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.6);
+}
+.mk-btn-ghost:hover {
+  border-color: var(--ink-faint);
+  color: var(--ink);
+}
+
+/* Plan cards. The recommended one is raised and inked rather than merely
+   outlined in a colour, so it survives being printed or read in greyscale. */
+.mk-plan {
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 0.875rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.mk-plan-best {
+  background: var(--ink);
+  color: #f4f2ea;
+  border-color: var(--ink);
+  box-shadow: 0 20px 50px -30px rgba(16, 34, 27, 0.55);
+}
+.mk-plan-best .mk-kicker {
+  color: #7fd0b4;
+}
+.mk-plan-best .mk-kicker::after {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* One orchestrated entrance rather than scattered micro-animations. */
+@keyframes mk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mk-rise {
+  animation: mk-rise 620ms cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-rise {
+    animation: none;
+  }
+}
+
+/* A marker underline, drawn slightly off the baseline like a pencil rule. */
+.mk-mark {
+  background-image: linear-gradient(to top, rgba(26, 163, 124, 0.28) 0.36em, transparent 0.36em);
+}

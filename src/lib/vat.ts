@@ -1,6 +1,8 @@
 import { db, schema } from "@/db/client";
-import { and, gte, lte, isNotNull, eq } from "drizzle-orm";
+import { tenantId } from "@/db/context";
+import { and, gte, lte, isNotNull, isNull, eq } from "drizzle-orm";
 import { round2 } from "./format";
+import { notExcluded } from "./transactions";
 
 const { payments, invoices, transactions, vatRates, categories } = schema;
 
@@ -26,8 +28,9 @@ export type RateRow = { rateId: string; name: string; rate: number; net: number;
 // Cash basis: output VAT is recognised when the customer pays. We apportion
 // each payment by the invoice's VAT-to-total ratio (handles part-payments and
 // mixed-rate invoices proportionally — the pragmatic Revenue-accepted method).
-function salesVat(from: string, to: string) {
-  const rows = db
+async function salesVat(from: string, to: string) {
+  const tid = tenantId();
+  const rows = await db
     .select({
       payAmount: payments.amount,
       invTotal: invoices.total,
@@ -36,9 +39,13 @@ function salesVat(from: string, to: string) {
       status: invoices.status,
     })
     .from(payments)
-    .innerJoin(invoices, eq(payments.invoiceId, invoices.id))
-    .where(and(gte(payments.date, from), lte(payments.date, to)))
-    .all();
+    // Both sides of the join are scoped: a join is the one place where filtering
+    // only the driving table would let another tenant's rows in.
+    .innerJoin(
+      invoices,
+      and(eq(payments.invoiceId, invoices.id), eq(invoices.tenantId, tid)),
+    )
+    .where(and(eq(payments.tenantId, tid), gte(payments.date, from), lte(payments.date, to)));
 
   let vat = 0;
   let net = 0;
@@ -55,23 +62,28 @@ function salesVat(from: string, to: string) {
 
 // Input VAT from expense bank transactions tagged with a VAT rate. The tx
 // amount is VAT-inclusive (gross), so the VAT element = gross * r/(1+r).
-function purchasesVat(from: string, to: string) {
-  const rows = db
-    .select({
-      amount: transactions.amount,
-      vatRateId: transactions.vatRateId,
-    })
-    .from(transactions)
-    .where(
-      and(
-        gte(transactions.bookedDate, from),
-        lte(transactions.bookedDate, to),
-        isNotNull(transactions.vatRateId),
+async function purchasesVat(from: string, to: string) {
+  const tid = tenantId();
+  const [rows, rateRows] = await Promise.all([
+    db
+      .select({
+        amount: transactions.amount,
+        vatRateId: transactions.vatRateId,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.tenantId, tid),
+          gte(transactions.bookedDate, from),
+          lte(transactions.bookedDate, to),
+          isNotNull(transactions.vatRateId),
+          notExcluded(),
+        ),
       ),
-    )
-    .all();
+    db.select().from(vatRates).where(eq(vatRates.tenantId, tid)),
+  ]);
 
-  const rateMap = new Map(db.select().from(vatRates).all().map((r) => [r.id, r]));
+  const rateMap = new Map(rateRows.map((r) => [r.id, r]));
   let vat = 0;
   let net = 0;
   const byRate = new Map<string, RateRow>();
@@ -98,8 +110,9 @@ function purchasesVat(from: string, to: string) {
   return { vat: round2(vat), net: round2(net), byRate: [...byRate.values()] };
 }
 
-function salesByRate(from: string, to: string): RateRow[] {
-  const rows = db
+async function salesByRate(from: string, to: string): Promise<RateRow[]> {
+  const tid = tenantId();
+  const rows = await db
     .select({
       payAmount: payments.amount,
       invTotal: invoices.total,
@@ -107,9 +120,11 @@ function salesByRate(from: string, to: string): RateRow[] {
       status: invoices.status,
     })
     .from(payments)
-    .innerJoin(invoices, eq(payments.invoiceId, invoices.id))
-    .where(and(gte(payments.date, from), lte(payments.date, to)))
-    .all();
+    .innerJoin(
+      invoices,
+      and(eq(payments.invoiceId, invoices.id), eq(invoices.tenantId, tid)),
+    )
+    .where(and(eq(payments.tenantId, tid), gte(payments.date, from), lte(payments.date, to)));
   // We don't store per-payment rate split, so report blended at standard rate
   // bucket. Good enough for the VAT3 headline; detailed RTD can come later.
   let net = 0;
@@ -124,28 +139,33 @@ function salesByRate(from: string, to: string): RateRow[] {
   return [{ rateId: "sales", name: "Sales (cash received)", rate: 0, net: round2(net), vat: round2(vat) }];
 }
 
-export function computeVatReturn(from: string, to: string): VatReturn {
-  const sales = salesVat(from, to);
-  const purch = purchasesVat(from, to);
+export async function computeVatReturn(from: string, to: string): Promise<VatReturn> {
+  const tid = tenantId();
 
-  const unassigned = db
-    .select({ amount: transactions.amount })
-    .from(transactions)
-    .where(
-      and(
-        gte(transactions.bookedDate, from),
-        lte(transactions.bookedDate, to),
+  // Expenses with neither a category nor a VAT rate: possible missed input VAT.
+  //
+  // This previously ran two near-identical full-range queries and threw the
+  // first result away unused, then counted in JS. One filtered count instead.
+  const [sales, purch, rates, unassignedRows] = await Promise.all([
+    salesVat(from, to),
+    purchasesVat(from, to),
+    salesByRate(from, to),
+    db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.tenantId, tid),
+          gte(transactions.bookedDate, from),
+          lte(transactions.bookedDate, to),
+          lte(transactions.amount, -0.005),
+          isNull(transactions.categoryId),
+          isNull(transactions.vatRateId),
+          notExcluded(),
+        ),
       ),
-    )
-    .all()
-    .filter((t) => t.amount < 0);
-  // count expenses with neither category nor vat rate set
-  const unassignedExpenseCount = db
-    .select({ amount: transactions.amount, cat: transactions.categoryId, vr: transactions.vatRateId })
-    .from(transactions)
-    .where(and(gte(transactions.bookedDate, from), lte(transactions.bookedDate, to)))
-    .all()
-    .filter((t) => t.amount < 0 && !t.cat && !t.vr).length;
+  ]);
+  const unassignedExpenseCount = unassignedRows.length;
 
   const t1 = sales.vat;
   const t2 = purch.vat;
@@ -159,7 +179,7 @@ export function computeVatReturn(from: string, to: string): VatReturn {
     t4_repayable: round2(Math.max(0, t2 - t1)),
     netSales: sales.net,
     netPurchases: purch.net,
-    salesByRate: salesByRate(from, to),
+    salesByRate: rates,
     purchasesByRate: purch.byRate,
     unassignedExpenseCount,
   };

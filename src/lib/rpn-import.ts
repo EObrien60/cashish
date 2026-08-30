@@ -1,4 +1,5 @@
 import { db, schema } from "@/db/client";
+import { tenantId } from "@/db/context";
 import { and, eq } from "drizzle-orm";
 import { uid } from "./id";
 
@@ -89,8 +90,15 @@ function buildUscBands(map: Map<string, unknown>) {
   return bands;
 }
 
-function matchEmployee(ppsn: string, employmentId: string, employerRef: string): string | null {
-  const all = db.select().from(employees).all();
+async function matchEmployee(
+  ppsn: string,
+  employmentId: string,
+  employerRef: string,
+): Promise<string | null> {
+  const all = await db
+    .select()
+    .from(employees)
+    .where(eq(employees.tenantId, tenantId()));
   const p = ppsn.toUpperCase().trim();
   // Prefer PPSN + employmentId, then PPSN, then employer reference.
   let hit = all.find((e) => (e.ppsn ?? "").toUpperCase().trim() === p && p && (employmentId ? e.employmentId === employmentId : true));
@@ -99,13 +107,17 @@ function matchEmployee(ppsn: string, employmentId: string, employerRef: string):
   return hit?.id ?? null;
 }
 
-export function importRpnJson(text: string, fallbackTaxYear: number): RpnImportSummary {
+export async function importRpnJson(
+  text: string,
+  fallbackTaxYear: number,
+): Promise<RpnImportSummary> {
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
     return { parsed: 0, imported: 0, matched: 0, unmatched: 0, errors: ["File is not valid JSON."] };
   }
+  const tid = tenantId();
   const records = extractRecords(json);
   if (records.length === 0) {
     return { parsed: 0, imported: 0, matched: 0, unmatched: 0, errors: ["No RPN records found in the file."] };
@@ -129,7 +141,7 @@ export function importRpnJson(text: string, fallbackTaxYear: number): RpnImportS
       continue;
     }
 
-    const employeeId = matchEmployee(ppsn, employmentId, employerReference);
+    const employeeId = await matchEmployee(ppsn, employmentId, employerReference);
     if (employeeId) matched++;
     else unmatched++;
 
@@ -167,11 +179,19 @@ export function importRpnJson(text: string, fallbackTaxYear: number): RpnImportS
     };
 
     // Replace any existing RPN for the same employment/year (latest wins).
-    db.transaction((trx) => {
+    await db.transaction(async (trx) => {
       if (employeeId) {
-        trx.delete(rpns).where(and(eq(rpns.employeeId, employeeId), eq(rpns.taxYear, taxYear))).run();
+        await trx
+          .delete(rpns)
+          .where(
+            and(
+              eq(rpns.tenantId, tid),
+              eq(rpns.employeeId, employeeId),
+              eq(rpns.taxYear, taxYear),
+            ),
+          );
       }
-      trx.insert(rpns).values(row).run();
+      await trx.insert(rpns).values({ ...row, tenantId: tid });
     });
     imported++;
   }
@@ -180,12 +200,17 @@ export function importRpnJson(text: string, fallbackTaxYear: number): RpnImportS
 }
 
 // The current (latest) RPN for an employee in a tax year.
-export function currentRpn(employeeId: string, taxYear: number) {
-  return db
+export async function currentRpn(employeeId: string, taxYear: number) {
+  const rows = await db
     .select()
     .from(rpns)
-    .where(and(eq(rpns.employeeId, employeeId), eq(rpns.taxYear, taxYear)))
-    .orderBy(rpns.effectiveDate)
-    .all()
-    .at(-1) ?? null;
+    .where(
+      and(
+        eq(rpns.tenantId, tenantId()),
+        eq(rpns.employeeId, employeeId),
+        eq(rpns.taxYear, taxYear),
+      ),
+    )
+    .orderBy(rpns.effectiveDate);
+  return rows.at(-1) ?? null;
 }

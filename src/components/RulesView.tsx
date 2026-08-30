@@ -6,6 +6,14 @@ import type { CategoryRule, Category, VatRate } from "@/db/schema";
 import { Card, EmptyState, Dot } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import {
+  POSTINGS,
+  POSTING_SPECS,
+  TAX_KINDS,
+  describePosting,
+  isPosting,
+  type Posting,
+} from "@/lib/posting";
+import {
   IconPlus,
   IconEdit,
   IconWand,
@@ -24,6 +32,9 @@ type Props = {
   categories: Category[];
   vatRates: VatRate[];
   uncategorizedCount: number;
+  customers?: { id: string; name: string }[];
+  vendors?: { id: string; name: string }[];
+  people?: { id: string; name: string }[];
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -40,12 +51,21 @@ const TYPE_LABEL: Record<string, string> = {
   regex: "matches regex",
 };
 
-export function RulesView({ rules, categories, vatRates, uncategorizedCount }: Props) {
+export function RulesView({
+  rules,
+  categories,
+  vatRates,
+  uncategorizedCount,
+  customers = [],
+  vendors = [],
+  people = [],
+}: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryRule | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const catMap = new Map(categories.map((c) => [c.id, c]));
   const vatMap = new Map(vatRates.map((v) => [v.id, v]));
@@ -58,6 +78,12 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
     direction: "any",
     categoryId: categories[0]?.id ?? "",
     vatRateId: "",
+    posting: "other" as Posting,
+    customerId: "",
+    vendorId: "",
+    employeeId: "",
+    taxKind: "vat",
+    excludedReason: "",
     enabled: true,
   };
   const [form, setForm] = useState(blank);
@@ -77,6 +103,12 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
       direction: r.direction,
       categoryId: r.categoryId ?? "",
       vatRateId: r.vatRateId ?? "",
+      posting: (isPosting(r.posting) ? r.posting : "other") as Posting,
+      customerId: r.customerId ?? "",
+      vendorId: r.vendorId ?? "",
+      employeeId: r.employeeId ?? "",
+      taxKind: r.taxKind ?? "vat",
+      excludedReason: r.excludedReason ?? "",
       enabled: r.enabled,
     });
     setOpen(true);
@@ -87,7 +119,7 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
   function save() {
     if (!form.matchValue.trim()) return;
     startTransition(async () => {
-      await saveRuleAction({
+      const result = await saveRuleAction({
         id: editing?.id,
         name: form.name,
         matchField: form.matchField,
@@ -97,7 +129,17 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
         categoryId: form.categoryId || null,
         vatRateId: form.vatRateId || null,
         enabled: form.enabled,
+        posting: form.posting,
+        customerId: form.customerId || null,
+        vendorId: form.vendorId || null,
+        employeeId: form.employeeId || null,
+        taxKind: form.taxKind || null,
+        excludedReason: form.excludedReason || null,
       });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
       setOpen(false);
       router.refresh();
     });
@@ -119,7 +161,12 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
   function applyNow() {
     startTransition(async () => {
       const r = await applyRulesAction();
-      setApplied(`Applied rules — ${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised.`);
+      const changed = `${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised`;
+      setApplied(
+        r.recategorised > 0
+          ? `Re-applied rules — ${changed}, ${r.recategorised} of them recategorised.`
+          : `Re-applied rules — ${changed}.`,
+      );
       router.refresh();
       setTimeout(() => setApplied(null), 4000);
     });
@@ -129,9 +176,11 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-ink-faint">
-          Rules auto-categorise transactions on import and can be applied to
-          existing ones. They run top to bottom — the first match wins. Manual
-          categorisations are never overwritten.
+          Rules auto-categorise transactions on import and can be re-applied to
+          existing ones. They run top to bottom — the first match wins. Applying
+          them reaches transactions that already have a category, so correcting a
+          rule fixes the history it got wrong; a category no rule matches is left
+          alone, and excluded transactions are skipped.
         </p>
         <div className="flex gap-2">
           <button
@@ -171,6 +220,7 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
               <tr>
                 <th className="th w-16">Order</th>
                 <th className="th">When</th>
+                <th className="th">Posts as</th>
                 <th className="th">Then categorise as</th>
                 <th className="th">VAT</th>
                 <th className="th text-right">Used</th>
@@ -180,6 +230,12 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
             <tbody className="divide-y divide-line">
               {rules.map((r, i) => {
                 const cat = r.categoryId ? catMap.get(r.categoryId) : null;
+                const posts = describePosting(r.posting, {
+                  customer: customers.find((c) => c.id === r.customerId)?.name,
+                  vendor: vendors.find((v) => v.id === r.vendorId)?.name,
+                  employee: people.find((pp) => pp.id === r.employeeId)?.name,
+                  taxKind: r.taxKind,
+                });
                 const vat = r.vatRateId ? vatMap.get(r.vatRateId) : null;
                 return (
                   <tr key={r.id} className={`hover:bg-paper/50 ${r.enabled ? "" : "opacity-50"}`}>
@@ -215,6 +271,19 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="td text-sm">
+                      <span
+                        className={
+                          r.posting === "other"
+                            ? "text-ink-faint"
+                            : r.posting === "transfer"
+                              ? "text-ink-soft"
+                              : "font-medium"
+                        }
+                      >
+                        {posts}
+                      </span>
                     </td>
                     <td className="td">
                       {cat ? (
@@ -320,7 +389,14 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Category</label>
-                <select className="input" value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
+                <PostingFields
+                form={form}
+                set={set as unknown as (k: string, v: string) => void}
+                customers={customers}
+                vendors={vendors}
+                people={people}
+              />
+              <select className="input" value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
                   <option value="">— none —</option>
                   <optgroup label="Income">
                     {categories.filter((c) => c.kind === "income").map((c) => (
@@ -357,5 +433,121 @@ export function RulesView({ rules, categories, vatRates, uncategorizedCount }: P
         </div>
       </Modal>
     </div>
+  );
+}
+
+/**
+ * The posting kind, and whichever counterparty that kind requires.
+ *
+ * One field at a time on purpose: the kind decides what else is needed, so
+ * showing all four references at once would invite exactly the mismatch the
+ * kind exists to prevent.
+ */
+function PostingFields({
+  form,
+  set,
+  customers,
+  vendors,
+  people,
+}: {
+  form: { posting: Posting; customerId: string; vendorId: string; employeeId: string; taxKind: string; excludedReason: string };
+  /** A plain string setter; the caller narrows. */
+  set: (k: string, v: string) => void;
+  customers: { id: string; name: string }[];
+  vendors: { id: string; name: string }[];
+  people: { id: string; name: string }[];
+}) {
+  const spec = POSTING_SPECS[form.posting];
+  const put = set;
+
+  return (
+    <>
+      <label className="block">
+        <span className="label">What is this?</span>
+        <select
+          className="input"
+          value={form.posting}
+          onChange={(e) => put("posting", e.target.value)}
+        >
+          {POSTINGS.map((id) => (
+            <option key={id} value={id}>
+              {POSTING_SPECS[id].label}
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs leading-relaxed text-ink-faint">{spec.blurb}</span>
+      </label>
+
+      {spec.requires === "customer" && (
+        <label className="block">
+          <span className="label">Customer</span>
+          <select className="input" value={form.customerId} onChange={(e) => put("customerId", e.target.value)}>
+            <option value="">Choose a customer…</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {spec.requires === "vendor" && (
+        <label className="block">
+          <span className="label">Vendor</span>
+          <select className="input" value={form.vendorId} onChange={(e) => put("vendorId", e.target.value)}>
+            <option value="">Choose a vendor…</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {spec.requires === "employee" && (
+        <label className="block">
+          <span className="label">Person</span>
+          <select className="input" value={form.employeeId} onChange={(e) => put("employeeId", e.target.value)}>
+            <option value="">Choose a person…</option>
+            {people.map((pp) => (
+              <option key={pp.id} value={pp.id}>
+                {pp.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {spec.requires === "taxKind" && (
+        <label className="block">
+          <span className="label">Which tax</span>
+          <select className="input" value={form.taxKind} onChange={(e) => put("taxKind", e.target.value)}>
+            {TAX_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {k.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {spec.excludes && (
+        <label className="block">
+          <span className="label">Why it is out of the books</span>
+          <input
+            className="input"
+            value={form.excludedReason}
+            placeholder="transfer to own tax pot"
+            onChange={(e) => put("excludedReason", e.target.value)}
+          />
+          <span className="mt-1 block text-xs text-ink-faint">
+            Recorded on every row it excludes. Someone will ask why this money is not in
+            the accounts.
+          </span>
+        </label>
+      )}
+    </>
   );
 }

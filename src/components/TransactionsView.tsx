@@ -9,7 +9,10 @@ import {
   categorizeTx,
   setTxVat,
   bulkCategorizeTx,
+  setTxEmployeeAction,
+  setTxVendorAction,
   applyRulesAction,
+  setExcludedAction,
 } from "@/app/actions";
 import type { ImportSummary } from "@/lib/transactions";
 import { Card, EmptyState, Dot } from "@/components/ui";
@@ -29,6 +32,10 @@ type Props = {
   categories: Category[];
   vatRates: VatRate[];
   receiptCounts: Record<string, number>;
+  /** People this business pays, for attributing a payment to one of them. */
+  people?: { id: string; name: string }[];
+  /** Suppliers, for attributing a payment to one of them. */
+  vendors?: { id: string; name: string }[];
   initialFilter?: string;
 };
 
@@ -37,6 +44,8 @@ export function TransactionsView({
   categories,
   vatRates,
   receiptCounts,
+  people = [],
+  vendors = [],
   initialFilter,
 }: Props) {
   const router = useRouter();
@@ -44,6 +53,8 @@ export function TransactionsView({
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<"all" | "in" | "out">("all");
   const [onlyUncat, setOnlyUncat] = useState(initialFilter === "uncategorized");
+  // Excluded transactions live in their own tab rather than cluttering the ledger.
+  const [tab, setTab] = useState<"active" | "excluded">("active");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
@@ -63,6 +74,7 @@ export function TransactionsView({
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return transactions.filter((t) => {
+      if (tab === "active" ? t.excluded : !t.excluded) return false;
       if (direction === "in" && t.amount < 0) return false;
       if (direction === "out" && t.amount >= 0) return false;
       if (onlyUncat && t.categoryId) return false;
@@ -72,7 +84,7 @@ export function TransactionsView({
       }
       return true;
     });
-  }, [transactions, search, direction, onlyUncat]);
+  }, [transactions, search, direction, onlyUncat, tab]);
 
   const totals = useMemo(() => {
     let inSum = 0,
@@ -127,6 +139,20 @@ export function TransactionsView({
     else setSelected(new Set(filtered.map((t) => t.id)));
   }
 
+  function onEmployee(t: Transaction, employeeId: string) {
+    startTransition(async () => {
+      await setTxEmployeeAction([t.id], employeeId || null);
+      router.refresh();
+    });
+  }
+
+  function onVendor(t: Transaction, vendorId: string) {
+    startTransition(async () => {
+      await setTxVendorAction([t.id], vendorId || null);
+      router.refresh();
+    });
+  }
+
   function bulkAssign(categoryId: string) {
     const ids = [...selected];
     startTransition(async () => {
@@ -139,13 +165,44 @@ export function TransactionsView({
   function applyRules() {
     startTransition(async () => {
       const r = await applyRulesAction();
-      setRulesMsg(`Rules applied — ${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised.`);
+      // The overwrite count is called out, because that is the destructive half.
+      const changed = `${r.updated} transaction${r.updated === 1 ? "" : "s"} categorised`;
+      setRulesMsg(
+        r.recategorised > 0
+          ? `Rules re-applied — ${changed}, ${r.recategorised} of them recategorised.`
+          : `Rules re-applied — ${changed}.`,
+      );
       router.refresh();
-      setTimeout(() => setRulesMsg(null), 4000);
+      setTimeout(() => setRulesMsg(null), 5000);
     });
   }
 
-  const uncatCount = transactions.filter((t) => !t.categoryId).length;
+  function exclude(exclude: boolean) {
+    const ids = [...selected];
+    const reason = exclude
+      ? (window.prompt(
+          "Why is this out of the books? (internal transfer, personal spend, duplicate…)",
+          "",
+        ) ?? "")
+      : "";
+    // A cancelled prompt returns null, which we read as "no reason given", not "abort" —
+    // the reason is useful, not mandatory.
+    startTransition(async () => {
+      await setExcludedAction(ids, exclude, reason);
+      setSelected(new Set());
+      setRulesMsg(
+        exclude
+          ? `${ids.length} transaction${ids.length === 1 ? "" : "s"} excluded — no longer counted anywhere.`
+          : `${ids.length} transaction${ids.length === 1 ? "" : "s"} put back in the books.`,
+      );
+      router.refresh();
+      setTimeout(() => setRulesMsg(null), 5000);
+    });
+  }
+
+  const activeTx = transactions.filter((t) => !t.excluded);
+  const excludedCount = transactions.length - activeTx.length;
+  const uncatCount = activeTx.filter((t) => !t.categoryId).length;
 
   return (
     <div>
@@ -243,7 +300,7 @@ export function TransactionsView({
         <button
           onClick={applyRules}
           className="btn-outline"
-          title="Apply your saved categorisation rules to uncategorised transactions"
+          title="Re-apply every enabled rule across the ledger, including transactions that already have a category"
         >
           <IconWand className="h-4 w-4" /> Apply rules
         </button>
@@ -255,27 +312,73 @@ export function TransactionsView({
         </div>
       )}
 
+      {/* Ledger / excluded */}
+      <div className="mb-3 flex items-center gap-1 border-b border-line">
+        {([
+          ["active", "Ledger", activeTx.length],
+          ["excluded", "Excluded", excludedCount],
+        ] as const).map(([key, label, n]) => (
+          <button
+            key={key}
+            onClick={() => {
+              setTab(key);
+              setSelected(new Set());
+            }}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+              tab === key
+                ? "border-brand font-medium text-brand-dark"
+                : "border-transparent text-ink-faint hover:text-ink"
+            }`}
+          >
+            {label} {n > 0 && <span className="text-ink-faint">({n})</span>}
+          </button>
+        ))}
+        {tab === "excluded" && (
+          <p className="ml-3 text-xs text-ink-faint">
+            Still on record so a statement reconciles, but counted in no report, no VAT
+            return and nothing Lunar is told.
+          </p>
+        )}
+      </div>
+
       {/* Bulk bar */}
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg border border-brand/30 bg-brand-wash px-4 py-2.5 text-sm">
           <span className="font-medium text-brand-dark">
             {selected.size} selected
           </span>
-          <span className="text-ink-faint">Assign category:</span>
-          <select
-            className="input max-w-xs py-1.5"
-            defaultValue=""
-            onChange={(e) => e.target.value && bulkAssign(e.target.value)}
-          >
-            <option value="" disabled>
-              Choose category…
-            </option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.kind})
-              </option>
-            ))}
-          </select>
+          {tab === "active" && (
+            <>
+              <span className="text-ink-faint">Assign category:</span>
+              <select
+                className="input max-w-xs py-1.5"
+                defaultValue=""
+                onChange={(e) => e.target.value && bulkAssign(e.target.value)}
+              >
+                <option value="" disabled>
+                  Choose category…
+                </option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.kind})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {tab === "active" ? (
+            <button
+              className="btn-outline"
+              onClick={() => exclude(true)}
+              title="Take these out of the books: kept on record, counted nowhere"
+            >
+              Exclude
+            </button>
+          ) : (
+            <button className="btn-outline" onClick={() => exclude(false)}>
+              Put back in the books
+            </button>
+          )}
           <button
             className="btn-ghost ml-auto"
             onClick={() => setSelected(new Set())}
@@ -311,6 +414,8 @@ export function TransactionsView({
                   <th className="th">Description</th>
                   <th className="th w-56">Category</th>
                   <th className="th w-36">VAT</th>
+                  {people.length > 0 && <th className="th w-40">Paid to</th>}
+                  {vendors.length > 0 && <th className="th w-44">Vendor</th>}
                   <th className="th w-32 text-right">Amount</th>
                   <th className="th w-16 text-center">Receipt</th>
                 </tr>
@@ -412,6 +517,48 @@ export function TransactionsView({
                           ))}
                         </select>
                       </td>
+                      {vendors.length > 0 && (
+                        <td className="td">
+                          {isOut ? (
+                            <select
+                              value={t.vendorId ?? ""}
+                              onChange={(e) => onVendor(t, e.target.value)}
+                              className="w-full rounded-md border border-line bg-card px-2 py-1 text-sm outline-none focus:border-brand"
+                            >
+                              <option value="">—</option>
+                              {vendors.map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-ink-faint">—</span>
+                          )}
+                        </td>
+                      )}
+                      {people.length > 0 && (
+                        <td className="td">
+                          {/* Only meaningful for money going out, so the control
+                              is only offered there. */}
+                          {isOut ? (
+                            <select
+                              value={t.employeeId ?? ""}
+                              onChange={(e) => onEmployee(t, e.target.value)}
+                              className="w-full rounded-md border border-line bg-card px-2 py-1 text-sm outline-none focus:border-brand"
+                            >
+                              <option value="">—</option>
+                              {people.map((pp) => (
+                                <option key={pp.id} value={pp.id}>
+                                  {pp.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-ink-faint">—</span>
+                          )}
+                        </td>
+                      )}
                       <td
                         className={`td text-right tabular font-semibold ${
                           isOut ? "text-money-out" : "text-money-in"
