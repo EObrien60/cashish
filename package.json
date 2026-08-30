@@ -16,6 +16,11 @@
     "db:generate": "npm run db:generate -w @cashish/core",
     "db:migrate": "npm run db:migrate -w @cashish/core",
     "bootstrap": "npm run bootstrap -w @cashish/books",
-    "mcp": "npm run mcp -w @cashish/books"
+    "mcp": "npm run mcp -w @cashish/books",
+    "dev:admin": "npm run dev -w @cashish/admin",
+    "build:admin": "npm run build -w @cashish/admin",
+    "test:admin": "npm run test -w @cashish/admin",
+    "admin:create": "npm run admin:create -w @cashish/admin",
+    "test:all": "npm run test -w @cashish/books && npm run test -w @cashish/admin"
   }
 }
