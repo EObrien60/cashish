@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Card } from "./ui";
-import type { Role } from "@/lib/rbac";
+import type { Role } from "@cashish/core/rbac";
 
 type Member = { userId: string; email: string; name: string; role: string };
 

@@ -6,7 +6,7 @@
  *   BOOTSTRAP_PASSWORD='…' npx tsx scripts/set-password.ts --email you@example.com
  */
 import { findUserByEmail, setUserPassword } from "../src/lib/auth";
-import { pool } from "../src/db/client";
+import { pool } from "@cashish/core/db";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {

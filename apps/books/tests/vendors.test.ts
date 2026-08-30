@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { eq } from "drizzle-orm";
 import { asTenant, makeTenant, seeded, closePool } from "./harness";
-import { db, schema } from "../src/db/client";
+import { db, schema } from "@cashish/core/db";
 import { uid } from "../src/lib/id";
 import {
   createVendor,

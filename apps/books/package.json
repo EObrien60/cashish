@@ -14,8 +14,8 @@
     "export:integration": "tsx scripts/export-integration.ts",
     "seed:scratch": "DATABASE_URL=./cashish-scratch.db tsx scripts/seed-scratch.ts",
     "test": "DATABASE_URL=${DATABASE_URL:-postgres://cashish:cashish@127.0.0.1:5470/cashish_test} tsx --test tests/*.test.ts",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts",
+    "db:generate": "npm run db:generate -w @cashish/core",
+    "db:migrate": "npm run db:migrate -w @cashish/core",
     "bootstrap": "tsx scripts/bootstrap.ts",
     "cloud:import": "tsx scripts/cloud-import.ts",
     "set-password": "tsx scripts/set-password.ts",
@@ -23,6 +23,7 @@
     "pretest": "npm run db:migrate"
   },
   "dependencies": {
+    "@cashish/core": "*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@vercel/blob": "^2.8.0",
     "drizzle-orm": "^0.38.4",

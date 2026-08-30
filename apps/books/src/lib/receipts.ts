@@ -1,5 +1,4 @@
-import { db, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, schema, tenantId } from "@cashish/core/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { extname } from "node:path";
 import { uid } from "./id";

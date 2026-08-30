@@ -15,8 +15,7 @@
  * that is annoying to unpick, so the list below is explicit rather than derived.
  */
 import { and, eq, isNotNull } from "drizzle-orm";
-import { db, pool, schema } from "../../src/db/client";
-import { runInTenant, tenantId } from "../../src/db/context";
+import { db, pool, runInTenant, schema, tenantId } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
 import { createPerson, listPeople, fullName, paidByEmployee } from "../../src/lib/people";
 import { listRules, applyRulesToAll } from "../../src/lib/rules";

@@ -15,9 +15,9 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { runInTenant } from "../src/db/context";
+import { runInTenant } from "@cashish/core/db";
 import { findTenantBySlug } from "../src/db/seed";
-import { isRole, type Role } from "../src/lib/rbac";
+import { isRole, type Role } from "@cashish/core/rbac";
 import { registerTools } from "./tools";
 
 async function main() {

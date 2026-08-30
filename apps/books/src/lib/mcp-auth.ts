@@ -1,7 +1,7 @@
 import { and, eq, isNull, gt } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
+import { db, first, schema } from "@cashish/core/db";
 import { resolveApiKey, sha256, type ResolvedCredential } from "./auth";
-import { isRole } from "./rbac";
+import { isRole } from "@cashish/core/rbac";
 
 const { oauthTokens } = schema;
 

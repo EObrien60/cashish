@@ -1,9 +1,9 @@
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
+import { db, first, schema } from "@cashish/core/db";
 import { sha256 } from "./auth";
 import { uid } from "./id";
-import { SCOPES, scopesForRole, type Role, type Scope } from "./rbac";
+import { SCOPES, scopesForRole, type Role, type Scope } from "@cashish/core/rbac";
 
 const { oauthClients, oauthCodes, oauthTokens } = schema;
 

@@ -15,9 +15,9 @@ async function main() {
   }
 
   // Imported after the guard: importing the client opens whatever DATABASE_URL names.
-  const { db, schema, pool } = await import("../src/db/client");
+  const { db, schema, pool } = await import("@cashish/core/db");
   const { createTenant } = await import("../src/db/seed");
-  const { runInTenant } = await import("../src/db/context");
+  const { runInTenant } = await import("@cashish/core/db");
   const { createCustomer } = await import("../src/lib/customers");
   const { createInvoice } = await import("../src/lib/invoices");
   const { uid } = await import("../src/lib/id");

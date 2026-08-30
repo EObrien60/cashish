@@ -13,7 +13,7 @@ import {
   changeInvoiceStatus,
   deleteInvoiceAction,
 } from "@/app/actions";
-import type { Payment } from "@/db/schema";
+import type { Payment } from "@cashish/core/db";
 
 type Props = {
   invoiceId: string;

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { asTenant, makeTenant, seeded, closePool } from "./harness";
-import { db, schema } from "../src/db/client";
+import { db, schema } from "@cashish/core/db";
 import { and, eq } from "drizzle-orm";
 import { saveRule, listRules, deleteRule, applyRulesToUncategorized, applyRulesToAll } from "../src/lib/rules";
 import { createInvoice, nextInvoiceNumber } from "../src/lib/invoices";

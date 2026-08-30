@@ -10,7 +10,7 @@
  */
 import { createTenant, findTenantBySlug } from "../src/db/seed";
 import { createUser, findUserByEmail, addMembership, roleFor } from "../src/lib/auth";
-import { pool } from "../src/db/client";
+import { pool } from "@cashish/core/db";
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

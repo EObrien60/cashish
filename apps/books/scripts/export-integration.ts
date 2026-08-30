@@ -12,9 +12,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { runInTenant } from "../src/db/context";
+import { pool, runInTenant } from "@cashish/core/db";
 import { findTenantBySlug } from "../src/db/seed";
-import { pool } from "../src/db/client";
 import { buildIntegrationSummary, SUMMARY_VERSION } from "../src/lib/integration";
 
 const args = process.argv.slice(2);

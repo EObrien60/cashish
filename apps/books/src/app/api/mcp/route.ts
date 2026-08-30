@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { runInTenant } from "@/db/context";
+import { runInTenant } from "@cashish/core/db";
 import { registerTools } from "../../../../mcp/tools";
 import { resolveCredential, unauthorised } from "@/lib/mcp-auth";
 

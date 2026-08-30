@@ -73,7 +73,7 @@ export CASHISH_TENANT=<slug>
 
 There is no `CASHISH_MCP_WRITE`. Whether a caller may change the books is
 decided by **its own role**, checked through the same capability map
-(`src/lib/rbac.ts`) the web UI uses:
+(`@cashish/core/rbac`) the web UI uses:
 
 | role | can |
 |---|---|

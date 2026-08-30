@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "description": "Lightweight EUR accounting — statements, invoicing, VAT, payroll.",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w @cashish/books",
     "build": "npm run build -w @cashish/books",
     "start": "npm run start -w @cashish/books",
     "lint": "npm run lint -w @cashish/books",
     "test": "npm run test -w @cashish/books",
-    "db:generate": "npm run db:generate -w @cashish/books",
-    "db:migrate": "npm run db:migrate -w @cashish/books",
+    "db:generate": "npm run db:generate -w @cashish/core",
+    "db:migrate": "npm run db:migrate -w @cashish/core",
     "bootstrap": "npm run bootstrap -w @cashish/books",
     "mcp": "npm run mcp -w @cashish/books"
   }

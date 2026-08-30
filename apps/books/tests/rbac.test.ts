@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { asTenant, makeTenant, closePool } from "./harness";
-import { can, requireCapability, ForbiddenError, ROLES, CAPABILITIES, scopesForRole } from "../src/lib/rbac";
+import { can, requireCapability, ForbiddenError, ROLES, CAPABILITIES, scopesForRole } from "@cashish/core/rbac";
 import { createApiKey, resolveApiKey, revokeApiKey, hashPassword, verifyPassword, authenticate, createUser, addMembership, roleFor } from "../src/lib/auth";
 
 let tenant: string;

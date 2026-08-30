@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { db, first, schema } from "@/db/client";
-import { runInTenant } from "@/db/context";
+import { db, first, runInTenant, schema } from "@cashish/core/db";
 import {
   authenticate,
   membershipsFor,
@@ -19,7 +18,7 @@ import {
 } from "@/lib/auth";
 import { currentSession, setSessionCookie, clearSessionCookie } from "@/lib/session";
 import { createTenant, findTenantBySlug } from "@/db/seed";
-import { isRole, requireCapability, type Role } from "@/lib/rbac";
+import { isRole, requireCapability, type Role } from "@cashish/core/rbac";
 import { uid } from "@/lib/id";
 
 const { invites, memberships, users } = schema;

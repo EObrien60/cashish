@@ -26,7 +26,7 @@ import {
 // - `id` columns are text UUIDs except bank transactions, which reuse the
 //   provider's own transaction id so re-imports dedupe naturally.
 // - Every domain table carries `tenant_id`. Scoping is enforced in the query
-//   layer (src/db/context.ts + src/lib/*), not by Postgres RLS.
+//   layer (context.ts here + each app's query modules), not by Postgres RLS.
 // ---------------------------------------------------------------------------
 
 // Reproduces exactly what SQLite's strftime('%Y-%m-%dT%H:%M:%fZ','now') emitted,

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { CategoryRule, Category, VatRate } from "@/db/schema";
+import type { CategoryRule, Category, VatRate } from "@cashish/core/db";
 import { Card, EmptyState, Dot } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import {

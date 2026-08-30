@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Customer, Product, VatRate, RecurringInvoiceLine } from "@/db/schema";
+import type { Customer, Product, VatRate, RecurringInvoiceLine } from "@cashish/core/db";
 import { money, round2, todayISO } from "@/lib/format";
 import { Card } from "@/components/ui";
 import { IconPlus, IconTrash } from "@/components/icons";

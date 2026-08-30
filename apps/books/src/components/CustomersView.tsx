@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { money } from "@/lib/format";
-import type { Customer } from "@/db/schema";
+import type { Customer } from "@cashish/core/db";
 import { Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { IconPlus, IconEdit } from "@/components/icons";

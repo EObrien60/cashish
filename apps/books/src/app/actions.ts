@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId, type Payslip } from "@cashish/core/db";
 import { withCapability } from "@/lib/request-context";
 import { uid } from "@/lib/id";
 import { parseStatementCsv } from "@/lib/import";
@@ -65,7 +64,6 @@ import {
   deleteBill,
   ALLOWED_BILL_MIME,
 } from "@/lib/bills";
-import type { Payslip } from "@/db/schema";
 
 const { categories, customers, products, settings, transactions } = schema;
 
@@ -74,12 +72,12 @@ const { categories, customers, products, settings, transactions } = schema;
 //
 // Every action is wrapped in withCapability(), which does three things at once:
 // verifies the session, checks the caller's role against the capability map in
-// src/lib/rbac.ts, and establishes the tenant context that src/lib/* queries
+// @cashish/core/rbac, and establishes the tenant context that src/lib/* queries
 // scope themselves by. The old boot() call is gone — there is no schema to
 // apply at request time any more.
 //
 // An action that forgets the wrapper does not silently operate on every tenant:
-// src/db/context.ts throws when no tenant is in scope.
+// @cashish/core/db throws when no tenant is in scope.
 // ---------------------------------------------------------------------------
 
 // ---- Statement import -----------------------------------------------------

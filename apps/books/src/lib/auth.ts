@@ -1,9 +1,9 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { and, eq } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
+import { db, first, schema } from "@cashish/core/db";
 import { uid } from "./id";
-import { isRole, type Role } from "./rbac";
+import { isRole, type Role } from "@cashish/core/rbac";
 
 const scrypt = promisify(scryptCb);
 const { users, memberships, tenants, apiKeys } = schema;

@@ -1,4 +1,4 @@
-import { db, first, schema } from "@/db/client";
+import { db, first, schema, tenantId, type CategoryRule, type Transaction } from "@cashish/core/db";
 import {
   POSTING_SPECS,
   isPosting,
@@ -6,11 +6,9 @@ import {
   validatePosting,
   type Posting,
 } from "./posting";
-import { tenantId } from "@/db/context";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { uid } from "./id";
 import { notExcluded } from "./transactions";
-import type { CategoryRule, Transaction } from "@/db/schema";
 
 const { categoryRules, transactions, categories } = schema;
 

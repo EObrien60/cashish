@@ -1,6 +1,5 @@
 import { and, asc, eq, ilike, or } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId } from "@cashish/core/db";
 import { uid } from "./id";
 
 const { customers } = schema;
@@ -10,7 +9,7 @@ const { customers } = schema;
 // nothing here knows about Next.
 //
 // Every query is scoped to the calling tenant via tenantId(), which throws if
-// there is no tenant context — see src/db/context.ts.
+// there is no tenant context — see context.ts in @cashish/core.
 
 export type CustomerInput = {
   name: string;

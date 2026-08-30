@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Vendor } from "@/db/schema";
+import type { Vendor } from "@cashish/core/db";
 import { money, fmtDate } from "@/lib/format";
 import { Card, EmptyState, StatusBadge } from "@/components/ui";
 import { Modal } from "@/components/Modal";

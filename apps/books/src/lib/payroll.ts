@@ -1,10 +1,8 @@
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId, type Employee, type Payslip, type Rpn } from "@cashish/core/db";
 import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import { uid } from "./id";
 import { round2 } from "./format";
 import { currentRpn } from "./rpn-import";
-import type { Employee, Payslip, Rpn } from "@/db/schema";
 
 const { employees, payRuns, payslips, rpns, settings } = schema;
 

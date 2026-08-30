@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { asTenant, makeTenant, seeded, closePool } from "./harness";
-import { db, schema } from "../src/db/client";
+import { ctx, db, schema } from "@cashish/core/db";
 import { uid } from "../src/lib/id";
 import { createCustomer, listCustomers } from "../src/lib/customers";
 import { createInvoice, listInvoices, recordPayment } from "../src/lib/invoices";
@@ -21,7 +21,6 @@ import { computeVatReturn } from "../src/lib/vat";
 import { reconcileReport } from "../src/lib/reconcile";
 import { buildIntegrationSummary } from "../src/lib/integration";
 import { listCategories, listVatRates, getSettings, listAllTransactions } from "../src/lib/lookups";
-import { ctx } from "../src/db/context";
 
 let a: string;
 let b: string;

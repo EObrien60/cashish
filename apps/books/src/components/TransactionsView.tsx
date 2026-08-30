@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Transaction, Category, VatRate } from "@/db/schema";
+import type { Transaction, Category, VatRate } from "@cashish/core/db";
 import { moneySigned, fmtDate, money } from "@/lib/format";
 import {
   importStatement,

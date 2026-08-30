@@ -24,7 +24,7 @@ import {
 } from "../src/lib/oauth";
 import { resolveOauthToken } from "../src/lib/mcp-auth";
 import { createUser, addMembership } from "../src/lib/auth";
-import { can } from "../src/lib/rbac";
+import { can } from "@cashish/core/rbac";
 
 let tenant: string;
 let userId: string;

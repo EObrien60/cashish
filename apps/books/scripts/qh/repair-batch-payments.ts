@@ -19,9 +19,8 @@
  * to propose, and it exits saying so.
  */
 import { and, eq } from "drizzle-orm";
-import { runInTenant } from "../../src/db/context";
+import { db, pool, runInTenant, schema } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
-import { db, pool, schema } from "../../src/db/client";
 import { round2 } from "../../src/lib/format";
 import { listCustomers } from "../../src/lib/customers";
 import { deletePayment, getInvoice } from "../../src/lib/invoices";

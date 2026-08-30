@@ -19,7 +19,7 @@
  */
 import Database from "better-sqlite3";
 import { eq, sql } from "drizzle-orm";
-import { db, pool, schema } from "../src/db/client";
+import { db, pool, schema } from "@cashish/core/db";
 import { findTenantBySlug, scopedId } from "../src/db/seed";
 
 const args = process.argv.slice(2);

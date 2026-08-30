@@ -1,6 +1,6 @@
-import { runInTenant } from "@/db/context";
+import { runInTenant } from "@cashish/core/db";
 import { resolveApiKey } from "@/lib/auth";
-import { can } from "@/lib/rbac";
+import { can } from "@cashish/core/rbac";
 import { buildIntegrationSummary } from "@/lib/integration";
 
 export const dynamic = "force-dynamic";

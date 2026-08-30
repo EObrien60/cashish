@@ -18,8 +18,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { db, schema } from "../src/db/client";
-import { can, type Role } from "../src/lib/rbac";
+import { db, schema } from "@cashish/core/db";
+import { can, type Role } from "@cashish/core/rbac";
 import { listCategories, listVatRates } from "../src/lib/lookups";
 import {
   createCustomer,

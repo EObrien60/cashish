@@ -4,8 +4,7 @@
  *
  *   npx tsx scripts/qh/rules2.ts --tenant quantumharbour [--commit]
  */
-import { pool } from "../../src/db/client";
-import { runInTenant, tenantId } from "../../src/db/context";
+import { pool, runInTenant, tenantId } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
 import { listRules, saveRule, applyRulesToAll } from "../../src/lib/rules";
 import { listCategories, listVatRates } from "../../src/lib/lookups";

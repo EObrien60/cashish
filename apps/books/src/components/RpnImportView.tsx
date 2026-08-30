@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Rpn, Employee } from "@/db/schema";
+import type { Rpn, Employee } from "@cashish/core/db";
 import { money, fmtDate, pct } from "@/lib/format";
 import { Card, EmptyState } from "@/components/ui";
 import { IconUpload } from "@/components/icons";

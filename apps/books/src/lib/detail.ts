@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId } from "@cashish/core/db";
 import { round2 } from "./format";
 
 const { customers, products, invoices, invoiceLines, payments, transactions, categories, vatRates } =

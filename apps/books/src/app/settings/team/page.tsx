@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentSession } from "@/lib/session";
-import { can } from "@/lib/rbac";
+import { can } from "@cashish/core/rbac";
 import { listMembers, inviteMember, removeMember, changeMemberRole } from "../../auth-actions";
 import { PageHeader } from "@/components/ui";
 import { SettingsTabs } from "@/components/SettingsTabs";

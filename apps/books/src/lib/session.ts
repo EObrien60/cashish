@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { roleFor } from "./auth";
-import type { Role } from "./rbac";
+import type { Role } from "@cashish/core/rbac";
 import { SESSION_COOKIE } from "./session-cookie";
 
 // ---------------------------------------------------------------------------

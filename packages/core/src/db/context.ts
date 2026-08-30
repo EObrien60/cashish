@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Role } from "@/lib/rbac";
+import type { Role } from "../rbac";
 
 // ---------------------------------------------------------------------------
 // Tenant context.

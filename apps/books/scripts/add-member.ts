@@ -13,10 +13,10 @@
  * reach: seeding, or an account that already exists.
  */
 import { and, eq } from "drizzle-orm";
-import { db, pool, schema } from "../src/db/client";
+import { db, pool, schema } from "@cashish/core/db";
 import { findTenantBySlug } from "../src/db/seed";
 import { createUser, findUserByEmail, addMembership, membershipsFor } from "../src/lib/auth";
-import { isRole } from "../src/lib/rbac";
+import { isRole } from "@cashish/core/rbac";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {

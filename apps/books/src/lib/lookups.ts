@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId } from "@cashish/core/db";
 import { notExcluded } from "./transactions";
 
 const { categories, vatRates, products, settings, transactions, rpns } = schema;

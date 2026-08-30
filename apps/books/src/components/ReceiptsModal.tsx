@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Receipt, Transaction } from "@/db/schema";
+import type { Receipt, Transaction } from "@cashish/core/db";
 import { fmtDate, moneySigned } from "@/lib/format";
 import { Modal } from "@/components/Modal";
 import { IconUpload, IconTrash, IconFile } from "@/components/icons";

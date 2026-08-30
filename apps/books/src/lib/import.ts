@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import type { Transaction } from "@/db/schema";
+import type { Transaction } from "@cashish/core/db";
 
 // Maps a Revolut Business "account statement" CSV into our transaction rows.
 // The provider's `ID` column is a stable UUID per transaction, so re-uploading

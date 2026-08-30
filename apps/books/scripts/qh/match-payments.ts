@@ -18,8 +18,7 @@
  *                                     1054, 1055 and 1056 to the cent)
  */
 import { and, eq, isNotNull } from "drizzle-orm";
-import { db, pool, schema } from "../../src/db/client";
-import { runInTenant, tenantId } from "../../src/db/context";
+import { db, pool, runInTenant, schema, tenantId } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
 import { listInvoices, recordPayment, getInvoice } from "../../src/lib/invoices";
 import { listCustomers } from "../../src/lib/customers";

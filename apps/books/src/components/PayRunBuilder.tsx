@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Payslip, Employee, PayRun } from "@/db/schema";
+import type { Payslip, Employee, PayRun } from "@cashish/core/db";
 import { money, round2, fmtDate } from "@/lib/format";
 import { Card, StatusBadge } from "@/components/ui";
 import { IconDownload, IconFile, IconCheck, IconTrash, IconRepeat } from "@/components/icons";

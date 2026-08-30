@@ -1,6 +1,5 @@
 import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, first, schema, tenantId } from "@cashish/core/db";
 import { round2 } from "./format";
 import { listCustomers } from "./customers";
 import { notExcluded } from "./transactions";

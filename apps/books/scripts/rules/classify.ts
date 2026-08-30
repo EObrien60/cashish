@@ -14,8 +14,7 @@
  * unclear is left alone and printed rather than guessed.
  */
 import { and, eq } from "drizzle-orm";
-import { db, pool, schema } from "../../src/db/client";
-import { runInTenant, tenantId } from "../../src/db/context";
+import { db, pool, runInTenant, schema, tenantId } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
 import { listRules } from "../../src/lib/rules";
 import { listCategories } from "../../src/lib/lookups";

@@ -1,5 +1,4 @@
-import { db, schema } from "@/db/client";
-import { tenantId } from "@/db/context";
+import { db, schema, tenantId } from "@cashish/core/db";
 import { and, gte, lte, isNotNull, isNull, eq } from "drizzle-orm";
 import { round2 } from "./format";
 import { notExcluded } from "./transactions";

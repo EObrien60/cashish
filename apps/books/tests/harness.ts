@@ -9,9 +9,9 @@
  * Each test file gets its own tenant, so nothing has to coordinate cleanup and
  * two files can run without seeing each other's rows.
  */
-import { execFileSync } from "node:child_process";
-import { runInTenant } from "../src/db/context";
-import type { Role } from "../src/lib/rbac";
+import { runInTenant } from "@cashish/core/db";
+import { migrate } from "@cashish/core/migrate";
+import type { Role } from "@cashish/core/rbac";
 
 const url = process.env.DATABASE_URL ?? "";
 if (!/test/i.test(url)) {
@@ -22,18 +22,23 @@ if (!/test/i.test(url)) {
 
 let migrated = false;
 
-/** Applies migrations once per process. */
-export function ensureSchema() {
+/**
+ * Applies migrations once per process.
+ *
+ * Calls the migrator directly rather than spawning `tsx scripts/migrate.ts`.
+ * The script used to be a sibling of this file; it now lives in @cashish/core,
+ * and a subprocess would have to guess at a path relative to whichever working
+ * directory the runner happened to use. The advisory lock inside migrate() is
+ * what makes concurrent test files safe, and it works the same either way.
+ */
+export async function ensureSchema() {
   if (migrated) return;
-  execFileSync("npx", ["tsx", "scripts/migrate.ts"], {
-    stdio: "pipe",
-    env: process.env,
-  });
+  await migrate();
   migrated = true;
 }
 
 export async function makeTenant(label: string) {
-  ensureSchema();
+  await ensureSchema();
   const { createTenant } = await import("../src/db/seed");
   const { uid } = await import("../src/lib/id");
   const slug = `test-${label}-${uid().slice(0, 8)}`;
@@ -50,6 +55,6 @@ export function asTenant<T>(tenantId: string, fn: () => Promise<T>, role: Role =
 export const seeded = (tenantId: string, baseId: string) => `${tenantId}:${baseId}`;
 
 export async function closePool() {
-  const { pool } = await import("../src/db/client");
+  const { pool } = await import("@cashish/core/db");
   await pool.end();
 }

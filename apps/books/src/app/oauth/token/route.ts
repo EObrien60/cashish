@@ -7,7 +7,7 @@ import {
   verifyClientSecret,
 } from "@/lib/oauth";
 import { roleFor } from "@/lib/auth";
-import type { Role } from "@/lib/rbac";
+import type { Role } from "@cashish/core/rbac";
 
 export const dynamic = "force-dynamic";
 

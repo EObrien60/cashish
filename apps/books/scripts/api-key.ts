@@ -11,8 +11,8 @@
  */
 import { findTenantBySlug } from "../src/db/seed";
 import { createApiKey, listApiKeys, revokeApiKey } from "../src/lib/auth";
-import { isRole } from "../src/lib/rbac";
-import { pool } from "../src/db/client";
+import { isRole } from "@cashish/core/rbac";
+import { pool } from "@cashish/core/db";
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

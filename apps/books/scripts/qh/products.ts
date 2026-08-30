@@ -21,8 +21,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray } from "drizzle-orm";
-import { db, pool, schema } from "../../src/db/client";
-import { runInTenant, tenantId } from "../../src/db/context";
+import { db, pool, runInTenant, schema, tenantId } from "@cashish/core/db";
 import { findTenantBySlug } from "../../src/db/seed";
 import { listProducts } from "../../src/lib/lookups";
 import { uid } from "../../src/lib/id";

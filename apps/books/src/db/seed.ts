@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, schema } from "./client";
+import { db, schema } from "@cashish/core/db";
 import { uid } from "@/lib/id";
 
 const { tenants, settings, vatRates, categories } = schema;

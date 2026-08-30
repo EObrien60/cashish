@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Settings, Category, VatRate } from "@/db/schema";
+import type { Settings, Category, VatRate } from "@cashish/core/db";
 import { Card } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { Dot } from "@/components/ui";

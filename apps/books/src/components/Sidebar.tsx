@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { can, type Role } from "@/lib/rbac";
+import { can, type Role } from "@cashish/core/rbac";
 import {
   IconDashboard,
   IconLedger,

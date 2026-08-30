@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, first, schema } from "@/db/client";
+import { db, first, schema } from "@cashish/core/db";
 import { sha256 } from "@/lib/auth";
 import { acceptInvite } from "../../auth-actions";
 import { AcceptInviteForm } from "@/components/AcceptInviteForm";
