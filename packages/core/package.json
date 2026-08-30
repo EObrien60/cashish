@@ -7,7 +7,8 @@
   "exports": {
     "./db": "./src/db/index.ts",
     "./rbac": "./src/rbac.ts",
-    "./migrate": "./src/migrate.ts"
+    "./migrate": "./src/migrate.ts",
+    "./plans": "./src/plans.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
