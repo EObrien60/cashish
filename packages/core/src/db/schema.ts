@@ -954,3 +954,30 @@ export type PlatformAdmin = typeof platformAdmins.$inferSelect;
 export type AdminAuditEntry = typeof adminAuditLog.$inferSelect;
 export type PlanRow = typeof plans.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+
+/**
+ * Failed sign-in attempts at the admin console.
+ *
+ * The console's production login page is publicly reachable — Vercel
+ * Authentication is not available for production deployments on this plan — so
+ * the password is the only thing in front of it. That makes an unlimited
+ * guessing rate the real exposure, and this table is what removes it.
+ *
+ * Keyed by a caller-supplied identifier rather than by admin id, because the
+ * attempts worth counting are the ones for addresses that do not exist: an
+ * attacker spraying a list must be slowed by the same mechanism as one
+ * targeting a known account. Rows are written for failures only, and a
+ * successful sign-in clears them.
+ */
+export const adminLoginAttempts = pgTable(
+  "admin_login_attempts",
+  {
+    id: text("id").primaryKey(),
+    /** "email:someone@example.com" or "ip:203.0.113.4" — the thing being limited. */
+    identifier: text("identifier").notNull(),
+    attemptedAt: text("attempted_at").notNull().default(now),
+  },
+  (t) => [index("login_attempt_idx").on(t.identifier, t.attemptedAt)],
+);
+
+export type AdminLoginAttempt = typeof adminLoginAttempts.$inferSelect;

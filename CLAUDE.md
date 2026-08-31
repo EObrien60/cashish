@@ -138,6 +138,13 @@ select counts and dates — never a transaction, invoice or payslip row, because
 a support question does not require reading somebody's ledger.
 `apps/admin/tests/boundaries.test.ts` fails if that slips.
 
+**The console's production login is rate-limited, because it is public.**
+Vercel Authentication is not offered for production deployments on this plan, so
+`login-throttle.ts` is what stands in for it: eight failures per address and
+twenty-four per IP in fifteen minutes, checked *before* the password is verified.
+The two thresholds differ deliberately — a single one locks the operator out of
+their own console the moment they mistype eight times.
+
 **Platform administrators are not users.** A separate table, a separate cookie
 and a separate signing secret, with no self-serve route in. Sharing either the
 table or the secret would mean a stolen customer session is an administrator
