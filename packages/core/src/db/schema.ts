@@ -705,6 +705,12 @@ export const users = pgTable(
     /** scrypt, stored as "<saltHex>:<derivedKeyHex>". Never a plaintext column. */
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull().default(""),
+    /**
+     * Set by a platform administrator to stop this person signing in anywhere.
+     * Checked in currentSession() beside the membership lookup, so it takes
+     * effect on the next request rather than when a token happens to expire.
+     */
+    disabledAt: text("disabled_at"),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [uniqueIndex("user_email_idx").on(t.email)],
@@ -830,3 +836,121 @@ export type Membership = typeof memberships.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type OauthClient = typeof oauthClients.$inferSelect;
+
+// --- The platform itself ------------------------------------------------------
+// Everything below describes people who OPERATE the service and what each tenant
+// is entitled to, as opposed to the tables above, which are the service.
+
+/**
+ * Platform administrators.
+ *
+ * Deliberately unrelated to `users`: no foreign key, no shared row, and a
+ * separate signing secret for the session cookie. A flag on `users` would mean
+ * that a stolen customer cookie is an admin cookie the moment the two apps
+ * share a secret, and that the customer sign-up path is one bug away from
+ * minting an administrator. There is no self-serve route into this table —
+ * rows come from `npm run admin:create`.
+ */
+export const platformAdmins = pgTable(
+  "platform_admins",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    /** scrypt, "<saltHex>:<derivedKeyHex>" — the same format as users, a different table. */
+    passwordHash: text("password_hash").notNull(),
+    name: text("name").notNull().default(""),
+    disabledAt: text("disabled_at"),
+    lastLoginAt: text("last_login_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("platform_admin_email_idx").on(t.email)],
+);
+
+/**
+ * Every mutating action the console performs, written in the same transaction
+ * as the mutation itself.
+ *
+ * Append-only: the console renders this and offers no delete. A console that
+ * can change what a customer pays and revoke their access is worth nothing
+ * without a record of who did it, and a log written on a best-effort basis is
+ * missing exactly the row you would want.
+ */
+export const adminAuditLog = pgTable(
+  "admin_audit_log",
+  {
+    id: text("id").primaryKey(),
+    adminId: text("admin_id")
+      .notNull()
+      .references(() => platformAdmins.id, { onDelete: "restrict" }),
+    /** e.g. "subscription.update", "api_key.revoke", "tenant.delete". */
+    action: text("action").notNull(),
+    subjectType: text("subject_type").notNull(), // tenant | user | subscription | plan
+    subjectId: text("subject_id").notNull(),
+    /**
+     * No foreign key, and no cascade, on purpose: the record of deleting a
+     * tenant is precisely the row that has to outlive the tenant.
+     */
+    tenantId: text("tenant_id"),
+    before: text("before"), // JSON, null on create
+    after: text("after"), // JSON, null on delete
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("audit_admin_idx").on(t.adminId, t.createdAt),
+    index("audit_subject_idx").on(t.subjectType, t.subjectId),
+  ],
+);
+
+/**
+ * What a plan entitles one set of books to.
+ *
+ * A table rather than a constant because changing a price or raising a limit is
+ * an operational act the console exists to perform, not a deploy. `plans.ts` in
+ * this package holds the types and the seed values; this holds the truth.
+ */
+export const plans = pgTable("plans", {
+  code: text("code").primaryKey(), // sole | company | practice
+  name: text("name").notNull(),
+  /** Integer cents. Null means "talk to us". Prices are not ledger amounts, so not double precision. */
+  priceCents: integer("price_cents"),
+  cadence: text("cadence").notNull().default("month"),
+  /** Members permitted in one set of books. Null means unlimited. */
+  maxUsers: integer("max_users"),
+  /** JSON: { payroll, receipts, mcp, oauth } — see @cashish/core/plans. */
+  features: text("features").notNull().default("{}"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+/**
+ * One subscription per tenant — a plan describes one set of books.
+ *
+ * `past_due` is expressible before anything can fail to charge, because that is
+ * the state a payment processor will report later and allowing for it now costs
+ * nothing. `note` earns its place because real subscription decisions are
+ * mostly exceptions, and a console with nowhere to write down why is one whose
+ * history is a mystery.
+ */
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    planCode: text("plan_code")
+      .notNull()
+      .references(() => plans.code, { onDelete: "restrict" }),
+    status: text("status").notNull(), // trialing | active | past_due | cancelled | suspended
+    trialEndsAt: text("trial_ends_at"),
+    currentPeriodEnd: text("current_period_end"),
+    cancelledAt: text("cancelled_at"),
+    note: text("note").notNull().default(""),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("subscription_tenant_idx").on(t.tenantId)],
+);
+
+export type PlatformAdmin = typeof platformAdmins.$inferSelect;
+export type AdminAuditEntry = typeof adminAuditLog.$inferSelect;
+export type PlanRow = typeof plans.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;

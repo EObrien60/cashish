@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: theme("colors.paper");
+  color: theme("colors.ink.DEFAULT");
+  -webkit-font-smoothing: antialiased;
+}
+
+/* An ops console reads as a table more than as a page: tabular figures keep
+   ids, counts and money in columns that line up. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .adm-card {
+    @apply bg-card border border-line rounded-lg shadow-card;
+  }
+  .adm-th {
+    @apply text-left text-[11px] font-semibold uppercase tracking-wide text-ink-faint px-3 py-2 border-b border-line;
+  }
+  .adm-td {
+    @apply px-3 py-2 border-b border-line/70 text-sm align-middle;
+  }
+  .adm-input {
+    @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent;
+  }
+  .adm-label {
+    @apply block text-xs font-medium text-ink-soft mb-1;
+  }
+  .adm-btn {
+    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors;
+  }
+  .adm-btn-primary {
+    @apply adm-btn bg-accent text-white hover:bg-accent-dark;
+  }
+  .adm-btn-ghost {
+    @apply adm-btn border border-line bg-white text-ink hover:bg-paper;
+  }
+  .adm-btn-danger {
+    @apply adm-btn bg-danger text-white hover:brightness-90;
+  }
+  .adm-pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium;
+  }
+  .adm-mono {
+    @apply font-mono text-[12px] text-ink-faint;
+  }
+}

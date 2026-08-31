@@ -58,7 +58,10 @@ jobs:
       # No tsconfig at the repository root since the workspace split; each
       # workspace is checked against its own.
       - name: Types
-        run: npx tsc --noEmit -p apps/books/tsconfig.json
+        run: |
+          npx tsc --noEmit -p packages/core/tsconfig.json
+          npx tsc --noEmit -p apps/books/tsconfig.json
+          npx tsc --noEmit -p apps/admin/tsconfig.json
 
       # Runs the migrations first via the pretest hook, which also proves the
       # migration path works on an empty database — the thing the Vercel build
@@ -66,5 +69,18 @@ jobs:
       - name: Tests
         run: npm test
 
+      # The console's own suite, including the boundary test that fails if it
+      # ever imports the books app, and the auth tests that are the whole
+      # argument for a separate platform_admins table.
+      - name: Admin tests
+        env:
+          ADMIN_AUTH_SECRET: ci-admin-secret-distinct-from-the-other-one-000
+        run: npm run test:admin
+
       - name: Build
         run: npm run build
+
+      - name: Build admin
+        env:
+          ADMIN_AUTH_SECRET: ci-admin-secret-distinct-from-the-other-one-000
+        run: npm run build:admin

@@ -80,3 +80,21 @@ export async function listRpns(taxYear: number) {
     .where(and(eq(rpns.tenantId, tenantId()), eq(rpns.taxYear, taxYear)))
     .orderBy(desc(rpns.createdAt));
 }
+
+// ---------------------------------------------------------------------------
+// The one read here that is deliberately NOT tenant-scoped.
+//
+// Plans are a property of the deployment, not of a business, and the pricing
+// page is served to visitors who have no tenant at all. Reading `plans` from
+// the table rather than from a constant is what stops the site advertising a
+// limit that src/lib/limits.ts does not enforce — both read this row.
+// ---------------------------------------------------------------------------
+
+export async function publicPlans() {
+  const rows = await db
+    .select()
+    .from(schema.plans)
+    .where(eq(schema.plans.isActive, true))
+    .orderBy(asc(schema.plans.sortOrder));
+  return rows;
+}

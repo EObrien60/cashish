@@ -19,8 +19,9 @@ export default async function PricingPage() {
           </h1>
           <p className="mk-rise mt-4 max-w-xl text-[color:var(--ink-soft)]" style={{ animationDelay: "60ms" }}>
             No per-transaction charge, no fee for inviting your accountant, no add-on for
-            the VAT return. The only thing that changes between plans is how many sets of
-            books you keep.
+            the VAT return. A plan covers one business — what changes between them is how
+            many people work in it and what it can do. Keep a second set of books and it
+            is a second subscription.
           </p>
           <div className="mt-12">
             <PlanCards />

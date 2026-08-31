@@ -19,6 +19,7 @@ import {
 import { currentSession, setSessionCookie, clearSessionCookie } from "@/lib/session";
 import { createTenant, findTenantBySlug } from "@/db/seed";
 import { isRole, requireCapability, type Role } from "@cashish/core/rbac";
+import { assertWithinUserLimit, LimitError } from "@/lib/limits";
 import { uid } from "@/lib/id";
 
 const { invites, memberships, users } = schema;
@@ -156,6 +157,15 @@ export async function inviteMember(formData: FormData) {
   if (!email) return { error: "An email address is required." };
   if (!isRole(roleValue)) return { error: "Unknown role." };
 
+  // The plan's seat limit. A no-op while BILLING_LIVE is false, which is why
+  // this can be here at all without changing anything for anyone today.
+  try {
+    await assertWithinUserLimit(session.tenantId);
+  } catch (error) {
+    if (error instanceof LimitError) return { error: error.message };
+    throw error;
+  }
+
   // The token is returned once, in the link. Only its hash is stored.
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -187,6 +197,15 @@ export async function acceptInvite(token: string, formData: FormData) {
     return { error: "That invitation is no longer valid." };
   }
   if (!isRole(invite.role)) return { error: "That invitation is malformed." };
+
+  // Checked again here, not only when the invite was issued: seats can fill, or
+  // the plan can shrink, between sending a link and somebody following it.
+  try {
+    await assertWithinUserLimit(invite.tenantId);
+  } catch (error) {
+    if (error instanceof LimitError) return { error: error.message };
+    throw error;
+  }
 
   const existing = await findUserByEmail(invite.email);
   const userId = existing?.id ?? (await createUser({ email: invite.email, password, name }));

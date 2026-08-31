@@ -1,74 +1,76 @@
 /**
  * Everything the public site says about the product, in one place.
  *
- * ── PRICES ARE PLACEHOLDERS ─────────────────────────────────────────────────
- * Nobody has decided them, and no card is taken anywhere: there is no payment
- * integration in this codebase. `BILLING_LIVE` is false, which makes the pricing
- * page say so plainly rather than implying a charge that cannot happen. Set the
- * numbers you actually want here, and flip the flag once billing exists.
+ * ── WHAT IS TRUE HERE, AND WHAT LIVES IN THE DATABASE ───────────────────────
+ * The PROSE is here. The NUMBERS — price, cadence, seat limit, which features a
+ * plan includes — come from the `plans` table, which is also what the limits in
+ * src/lib/limits.ts enforce. They are read together in the pricing page so that
+ * the site cannot advertise a limit that is not applied, or a price nobody set.
+ *
+ * A plan covers ONE SET OF BOOKS. Subscriptions are per tenant, so the thing
+ * that separates the plans is how many people may work in one business and what
+ * that business can do — never how many businesses you may own. Add a second
+ * business and it is a second subscription.
+ *
+ * `BILLING_LIVE` is still false: no card is taken anywhere, every gate in
+ * limits.ts is a no-op, and the pricing page says so plainly rather than
+ * implying a charge that cannot happen. Flip it once the prices are real.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
 export const BILLING_LIVE = false;
 
-export type Plan = {
-  id: string;
-  name: string;
-  price: number | null;
-  cadence: string;
+/** The prose for a plan. Its price and limits come from the `plans` table. */
+export type PlanCopy = {
+  code: string;
   pitch: string;
   best?: boolean;
   includes: string[];
-  limits?: string;
 };
 
-export const PLANS: Plan[] = [
+export const PLAN_COPY: PlanCopy[] = [
   {
-    id: "sole",
-    name: "Sole trader",
-    price: 9,
-    cadence: "per month",
+    code: "sole",
     pitch: "One business, one person, books that stay straight.",
     includes: [
       "Unlimited bank statement imports",
       "Categorisation rules that apply retroactively",
       "Invoices, recurring invoices and payment matching",
       "Cash or invoice basis VAT return figures",
-      "Read-only API key for your own scripts",
+      "P&L, cashflow and margin reporting",
     ],
-    limits: "One business. One user.",
   },
   {
-    id: "company",
-    name: "Company",
-    price: 29,
-    cadence: "per month",
-    best: true,
+    code: "company",
     pitch: "For a limited company with an accountant and a few people to pay.",
+    best: true,
     includes: [
       "Everything in Sole trader",
-      "Up to five businesses, switched from the sidebar",
       "Invite your accountant with their own login and role",
-      "People and payroll — attach payments without RPN filing",
+      "People and payroll — Irish PAYE, RPN import, payslips",
       "Receipt attachments",
       "MCP access, so an AI agent can do the bookkeeping",
     ],
-    limits: "Five businesses. Unlimited users.",
   },
   {
-    id: "practice",
-    name: "Practice",
-    price: null,
-    cadence: "talk to us",
+    code: "practice",
     pitch: "You keep books for other people and want them all in one place.",
     includes: [
       "Everything in Company",
-      "Unlimited businesses",
       "OAuth connections for agent tooling",
+      "Volume pricing across the businesses you run",
       "Priority on the things you need next",
     ],
   },
 ];
+
+/** How a seat limit reads on the pricing card. */
+export function seatLine(maxUsers: number | null): string {
+  if (maxUsers === null) return "Unlimited people in this business.";
+  return maxUsers === 1
+    ? "One person in this business."
+    : `Up to ${maxUsers} people in this business.`;
+}
 
 export const FEATURES = [
   {
