@@ -50,6 +50,13 @@
       "when": 1788115503442,
       "tag": "0006_superb_lady_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788180135685,
+      "tag": "0007_fat_gambit",
+      "breakpoints": true
     }
   ]
 }
