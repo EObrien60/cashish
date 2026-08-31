@@ -33,6 +33,13 @@ packages/core/               @cashish/core — imported by every app
   src/migrate.ts             the migrator, callable; scripts/migrate.ts wraps it
   drizzle/                   generated migrations — never edited by hand
 
+apps/admin/                  the platform admin console
+  src/lib/admin-auth.ts      platform_admins: passwords, authenticate
+  src/lib/admin-session.ts   its own cookie and its own signing secret
+  src/lib/audit.ts           withAudit — mutation and record in one transaction
+  src/queries/               cross-tenant reads, deliberately outside runInTenant
+  scripts/create-admin.ts    the only way an administrator comes to exist
+
 apps/books/                  the accounting app
   src/db/seed.ts             per-tenant seed (VAT rates, categories) — domain
   src/lib/                   the domain: transactions, rules, invoices, reconcile,
@@ -79,6 +86,8 @@ workspace; add `-w @cashish/books` or `-w @cashish/core` to target one directly.
 | `npm run add-member -- --tenant <slug> --email … --role …` | grant someone access without an invite link |
 | `npm run set-password -- --email … --password …` | rotate a password |
 | `npm run mcp` | MCP over stdio (needs `CASHISH_TENANT`) |
+| `npm run dev:admin` / `build:admin` / `test:admin` | the admin console |
+| `npm run admin:create -w @cashish/admin -- --email … --password …` | create a platform administrator (the `-w` form is required; a root alias cannot forward the flags through two npm hops) |
 
 ### Environment
 
@@ -89,6 +98,7 @@ workspace; add `-w @cashish/books` or `-w @cashish/core` to target one directly.
 | `APP_URL` | production | public origin; OAuth metadata and invite links depend on it |
 | `BLOB_READ_WRITE_TOKEN` | for receipts | absent locally ⇒ blobs fall back to `./data/blobs`. The store must be created with **private** access; a public one rejects the writes. |
 | `CASHISH_TENANT` | for `npm run mcp` | tenant slug the stdio server serves |
+| `ADMIN_AUTH_SECRET` | for `apps/admin` | ≥32 chars, and it **must differ from `AUTH_SECRET`** — the console refuses to start otherwise |
 | `CASHISH_ALLOW_PREVIEW_DB` | no | confirms a preview deployment has its own database |
 
 ## Conventions specific to this repo
@@ -120,6 +130,24 @@ due dates.
 **`@cashish/core`'s `client.ts` is lazy on purpose.** `next build` imports every route
 module to read its config, so a connection — or a thrown "DATABASE_URL is not
 set" — at module scope makes the build require a database it never queries.
+
+**The admin console shares the schema and nothing else.** `apps/admin` must
+never import from `apps/books`: everything there assumes a tenant context, and
+the console deliberately runs without one. Its queries use `db` directly and
+select counts and dates — never a transaction, invoice or payslip row, because
+a support question does not require reading somebody's ledger.
+`apps/admin/tests/boundaries.test.ts` fails if that slips.
+
+**Platform administrators are not users.** A separate table, a separate cookie
+and a separate signing secret, with no self-serve route in. Sharing either the
+table or the secret would mean a stolen customer session is an administrator
+session, so `admin-session.ts` refuses to start when the two secrets match.
+
+**Plan limits are all no-ops while `BILLING_LIVE` is false.** That is what lets
+`src/lib/limits.ts` exist without changing anything for anyone using cashish
+today; `apps/books/tests/plan-limits.test.ts` asserts it first, deliberately.
+Prices and limits live in the `plans` table, and both the pricing page and the
+enforcement read it, so the site cannot advertise a limit nothing applies.
 
 **The schema lives in `packages/core`, and only there.** Both the books app
 and anything added later import `@cashish/core/db`; no app declares a table. One

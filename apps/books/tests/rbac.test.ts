@@ -98,3 +98,33 @@ test("an API key carries its own role, and revoking it takes effect", async () =
   await revokeApiKey(tenant, id);
   assert.equal(await resolveApiKey(key), null, "revoked means revoked");
 });
+
+test("a disabled user has no role, and therefore no session", async () => {
+  const { db, schema } = await import("@cashish/core/db");
+  const { eq } = await import("drizzle-orm");
+  const { createUser, addMembership, roleFor } = await import("../src/lib/auth");
+
+  const tenant = await makeTenant("disabled");
+  const userId = await createUser({
+    email: `disabled-${Date.now()}@example.test`,
+    password: "correct-horse-battery",
+  });
+  await addMembership(userId, tenant.id, "owner");
+
+  assert.equal(await roleFor(userId, tenant.id), "owner", "sanity: works before disabling");
+
+  await db
+    .update(schema.users)
+    .set({ disabledAt: new Date().toISOString() })
+    .where(eq(schema.users.id, userId));
+
+  assert.equal(
+    await roleFor(userId, tenant.id),
+    null,
+    "a platform administrator disabling somebody must take effect on the next request, " +
+      "not when their fourteen-day cookie expires",
+  );
+
+  await db.update(schema.users).set({ disabledAt: null }).where(eq(schema.users.id, userId));
+  assert.equal(await roleFor(userId, tenant.id), "owner", "and it must be reversible");
+});

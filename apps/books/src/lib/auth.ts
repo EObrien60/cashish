@@ -106,15 +106,26 @@ export async function membershipsFor(userId: string): Promise<MembershipRow[]> {
  * revoking a membership or demoting someone takes effect on their very next
  * request instead of whenever their token happens to expire.
  */
+/**
+ * The role this person holds in this tenant, or null.
+ *
+ * Joined against `users` so that a disabled account resolves to null: a
+ * platform administrator disabling somebody must take effect on that person's
+ * next request, not whenever their fourteen-day cookie happens to expire. This
+ * is the same reasoning that keeps the role out of the token — a session is a
+ * cache of who you are, never of what you may do.
+ */
 export async function roleFor(userId: string, tenantIdValue: string): Promise<Role | null> {
   const row = first(
     await db
-      .select({ role: memberships.role })
+      .select({ role: memberships.role, disabledAt: users.disabledAt })
       .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
       .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantIdValue)))
       .limit(1),
   );
-  return row && isRole(row.role) ? row.role : null;
+  if (!row || row.disabledAt) return null;
+  return isRole(row.role) ? row.role : null;
 }
 
 export async function addMembership(userId: string, tenantIdValue: string, role: Role) {

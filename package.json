@@ -20,7 +20,6 @@
     "dev:admin": "npm run dev -w @cashish/admin",
     "build:admin": "npm run build -w @cashish/admin",
     "test:admin": "npm run test -w @cashish/admin",
-    "admin:create": "npm run admin:create -w @cashish/admin",
     "test:all": "npm run test -w @cashish/books && npm run test -w @cashish/admin"
   }
 }

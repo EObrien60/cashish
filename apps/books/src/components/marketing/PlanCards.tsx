@@ -1,10 +1,34 @@
 import Link from "next/link";
-import { PLANS, BILLING_LIVE } from "@/lib/marketing";
+import { PLAN_COPY, BILLING_LIVE, seatLine } from "@/lib/marketing";
+import { formatPrice, parseFeatures } from "@cashish/core/plans";
+import { publicPlans } from "@/lib/lookups";
 
-export function PlanCards({ compact = false }: { compact?: boolean }) {
+/**
+ * Prices and limits come from the `plans` table; the prose comes from
+ * marketing.ts. Reading them together is what makes it impossible for the page
+ * to promise a limit that the enforcement in limits.ts does not apply.
+ */
+export async function PlanCards({ compact = false }: { compact?: boolean }) {
+  const rows = await publicPlans();
+  const plans = rows.map((row, index) => {
+    const copy = PLAN_COPY.find((c) => c.code === row.code);
+    return {
+      id: row.code,
+      name: row.name,
+      price: row.priceCents === null ? null : formatPrice(row.priceCents).replace("€", ""),
+      cadence: `per business, per ${row.cadence}`,
+      limits: seatLine(row.maxUsers),
+      pitch: copy?.pitch ?? "",
+      includes: copy?.includes ?? [],
+      best: copy?.best ?? false,
+      features: parseFeatures(row.features),
+      index,
+    };
+  });
+
   return (
     <div className={`grid gap-4 ${compact ? "lg:grid-cols-3" : "md:grid-cols-3"}`}>
-      {PLANS.map((plan, i) => (
+      {plans.map((plan, i) => (
         <div
           key={plan.id}
           className={`mk-plan mk-rise ${plan.best ? "mk-plan-best" : ""}`}
