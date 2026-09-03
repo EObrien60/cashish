@@ -36,6 +36,22 @@ async function handle(request: Request): Promise<Response> {
   });
 }
 
+// The endpoint is POST-only. MCP's Streamable HTTP transport lets a server
+// decline the optional standalone SSE stream by answering GET with 405, and this
+// one must: the SDK's handleGetRequest opens an unbounded keepalive stream
+// instead of declining, and on a serverless host that open response keeps the
+// invocation — and its provisioned memory — billable for as long as the client
+// holds the socket. Nothing is ever pushed into it either, because the transport
+// is stateless: the McpServer above is built per request and is gone by the time
+// a notification could exist. Same reasoning for DELETE, which has no session to
+// terminate here.
+//
+// This runs before resolveCredential deliberately. Clients that lose the stream
+// reconnect in a loop, and a rejected request must not cost a database round
+// trip to answer.
+const methodNotAllowed = (_request: Request): Response =>
+  new Response(null, { status: 405, headers: { Allow: "POST" } });
+
 export const POST = handle;
-export const GET = handle;
-export const DELETE = handle;
+export const GET = methodNotAllowed;
+export const DELETE = methodNotAllowed;
