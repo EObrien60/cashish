@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import Papa from "papaparse";
 import type { Transaction } from "@cashish/core/db";
 
@@ -63,9 +64,27 @@ const FIELD_ALIASES: Record<string, string[]> = {
   totalAmount: ["totalamount"],
   fee: ["fee"],
   balance: ["balance"],
-  account: ["account"],
+  account: ["account", "product"],
   mcc: ["mcc"],
 };
+
+/**
+ * A stable id for a statement that has no ID column.
+ *
+ * Revolut BUSINESS exports carry a UUID per transaction, which is what makes a
+ * re-upload of an overlapping period safe. The PERSONAL export has no such
+ * column, so one is derived from the fields that identify the line: the dates,
+ * the description, the amount and the running balance. Balance is what makes it
+ * safe — two identical €3.50 coffees on the same day differ by the balance they
+ * left behind, so they hash differently and both survive, while re-importing
+ * the same file produces the same hashes and inserts nothing.
+ *
+ * Prefixed so a synthesised id is never mistaken for a provider's own.
+ */
+function derivedId(parts: (string | number | null)[]): string {
+  const digest = createHash("sha256").update(parts.map((p) => p ?? "").join("|")).digest("hex");
+  return `csv_${digest.slice(0, 32)}`;
+}
 
 function buildResolver(headers: string[]) {
   const map = new Map<string, string>(); // normalised header -> original header
@@ -92,10 +111,15 @@ export function parseStatementCsv(text: string): ParseResult {
 
   const idHeader = resolve("id");
   const amountHeader = resolve("amount");
-  if (!idHeader) {
+  const dateHeader = resolve("dateCompleted") ?? resolve("dateStarted");
+  // No ID column is normal — a personal Revolut export has none — so long as
+  // there is enough else to identify a line with. Without a date there is not.
+  if (!idHeader && !dateHeader) {
     return {
       rows: [],
-      errors: ["Could not find an 'ID' column — is this a Revolut statement?"],
+      errors: [
+        "Could not find an 'ID' column, nor a date to derive one from — is this a Revolut statement?",
+      ],
       totalRows: 0,
     };
   }
@@ -117,7 +141,23 @@ export function parseStatementCsv(text: string): ParseResult {
 
   for (let i = 0; i < parsed.data.length; i++) {
     const r = parsed.data[i];
-    const id = get(r, "id");
+
+    const amount = num(get(r, "amount"));
+    const dateCompleted = get(r, "dateCompleted") || null;
+    const dateStarted = get(r, "dateStarted") || null;
+    const bookedDate = (dateCompleted || dateStarted || "").slice(0, 10);
+
+    const id =
+      get(r, "id") ||
+      derivedId([
+        dateCompleted,
+        dateStarted,
+        get(r, "description"),
+        get(r, "reference"),
+        get(r, "amount"),
+        get(r, "balance"),
+        get(r, "currency"),
+      ]);
     if (!id) {
       errors.push(`Row ${i + 2}: missing transaction ID, skipped.`);
       continue;
@@ -126,15 +166,10 @@ export function parseStatementCsv(text: string): ParseResult {
     if (seenInFile.has(id)) continue;
     seenInFile.add(id);
 
-    const amount = num(get(r, "amount"));
     if (amount === null) {
       errors.push(`Row ${i + 2} (${id}): unparseable amount, skipped.`);
       continue;
     }
-
-    const dateCompleted = get(r, "dateCompleted") || null;
-    const dateStarted = get(r, "dateStarted") || null;
-    const bookedDate = (dateCompleted || dateStarted || "").slice(0, 10);
 
     rows.push({
       id,

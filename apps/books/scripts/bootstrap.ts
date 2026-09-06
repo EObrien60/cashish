@@ -21,6 +21,8 @@ const flag = (name: string): string | undefined => {
 
 async function main() {
   const slug = flag("slug");
+  const kind = (flag("kind") ?? "business") as "business" | "personal";
+  const region = (flag("region") ?? "IE") as "IE" | "GB";
   const name = flag("name");
   const email = flag("email");
   const password = flag("password") ?? process.env.BOOTSTRAP_PASSWORD;
@@ -28,6 +30,7 @@ async function main() {
   if (!slug || !name || !email || !password) {
     console.error(
       "usage: bootstrap.ts --slug <slug> --name <business name> --email <owner email> --password <password>\n" +
+      "       [--kind business|personal] [--region IE|GB]\n" +
         "       (or set BOOTSTRAP_PASSWORD instead of --password, to keep it out of shell history)",
     );
     process.exit(1);
@@ -42,7 +45,16 @@ async function main() {
     process.exit(1);
   }
 
-  const tenantId = await createTenant({ slug, name });
+  if (kind !== "business" && kind !== "personal") {
+    console.error(`--kind must be business or personal, not "${kind}".`);
+    process.exit(1);
+  }
+  if (region !== "IE" && region !== "GB") {
+    console.error(`--region must be IE or GB, not "${region}".`);
+    process.exit(1);
+  }
+
+  const tenantId = await createTenant({ slug, name, kind, region });
 
   const existing = await findUserByEmail(email);
   const userId = existing?.id ?? (await createUser({ email, password }));
@@ -51,7 +63,7 @@ async function main() {
   }
   await addMembership(userId, tenantId, "owner");
 
-  console.log(`tenant  ${slug}  (${tenantId})`);
+  console.log(`tenant  ${slug}  (${tenantId})  ${kind} · ${region}`);
   console.log(`owner   ${email}  role=${await roleFor(userId, tenantId)}`);
   console.log(`\nSeeded 5 Irish VAT rates and 15 default categories.`);
   console.log(`Next: import the book with scripts/cloud-import.ts --tenant ${slug}`);

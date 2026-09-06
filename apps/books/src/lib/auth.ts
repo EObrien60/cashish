@@ -81,7 +81,14 @@ export async function authenticate(email: string, password: string) {
   return ok && user ? user : null;
 }
 
-export type MembershipRow = { tenantId: string; slug: string; name: string; role: Role };
+export type MembershipRow = {
+  tenantId: string;
+  slug: string;
+  name: string;
+  role: Role;
+  /** 'business' | 'personal' — which surfaces this book has. */
+  kind: string;
+};
 
 export async function membershipsFor(userId: string): Promise<MembershipRow[]> {
   const rows = await db
@@ -90,13 +97,14 @@ export async function membershipsFor(userId: string): Promise<MembershipRow[]> {
       role: memberships.role,
       slug: tenants.slug,
       name: tenants.name,
+      kind: tenants.kind,
     })
     .from(memberships)
     .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
     .where(eq(memberships.userId, userId));
   return rows
     .filter((r) => isRole(r.role))
-    .map((r) => ({ tenantId: r.tenantId, slug: r.slug, name: r.name, role: r.role as Role }));
+    .map((r) => ({ tenantId: r.tenantId, slug: r.slug, name: r.name, role: r.role as Role, kind: r.kind }));
 }
 
 /**

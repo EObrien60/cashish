@@ -77,6 +77,7 @@ export default async function RootLayout({
       <body>
         <Sidebar
           role={session?.role ?? "viewer"}
+          kind={active?.kind ?? "business"}
           tenants={tenants.map((t) => ({ id: t.tenantId, name: t.name }))}
           activeTenantId={active?.tenantId ?? null}
           switchTenant={switchTenant}
