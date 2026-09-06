@@ -69,17 +69,21 @@ export function AccountsTable({
                     }}
                   />
                 ) : (
-                  <button
-                    type="button"
-                    className="text-left hover:underline"
-                    onClick={() => {
-                      setEditing(a.id);
-                      setName(a.name);
-                    }}
-                    title="Rename"
-                  >
-                    {a.name}
-                  </button>
+                  <>
+                    <Link href={`/accounts/${a.id}`} className="hover:underline">
+                      {a.name}
+                    </Link>
+                    <button
+                      type="button"
+                      className="ml-2 text-[10px] uppercase tracking-wide text-ink-faint underline"
+                      onClick={() => {
+                        setEditing(a.id);
+                        setName(a.name);
+                      }}
+                    >
+                      rename
+                    </button>
+                  </>
                 )}
                 {a.inferred && (
                   <span
