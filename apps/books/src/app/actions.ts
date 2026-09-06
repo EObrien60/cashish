@@ -1,7 +1,7 @@
 "use server";
 
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
-import { updateAccount, assignUnassigned } from "@/lib/accounts";
+import { updateAccount, assignUnassigned, ensureAccount } from "@/lib/accounts";
 import { detectTransfers, pairTransfers, markTransfer, unmarkTransfer } from "@/lib/transfers";
 import type { AccountKind } from "@cashish/core/db";
 import { revalidatePath } from "next/cache";
@@ -570,14 +570,37 @@ export async function assignUnassignedAction(accountId: string) {
   });
 }
 
-/** Re-runs transfer detection over the whole ledger, not just one import. */
-export async function detectTransfersAction() {
+/**
+ * Rebuilds accounts and transfers from transactions already in the book.
+ *
+ * Everything imported before accounts existed sits on no account and has never
+ * been looked at for transfers. This is the one action that fixes that, and it
+ * is deliberately one action rather than three buttons: on an existing book the
+ * three steps are meaningless apart — an account to assign to, the assigning,
+ * and then the transfer scan that can only work once rows know where they sat.
+ *
+ * Safe to run repeatedly. Assigning only touches rows with no account,
+ * detection skips anything already classified, and pairing skips anything
+ * already paired.
+ */
+export async function recomputeAccountsAction(input: { createAccount?: string } = {}) {
   return withCapability("books:write", async () => {
+    let assigned = 0;
+    const name = input.createAccount?.trim();
+    if (name) {
+      const { id } = await ensureAccount({ name, inferred: false });
+      assigned = await assignUnassigned(id);
+    }
     const detected = await detectTransfers();
     const paired = await pairTransfers();
     revalidatePath("/accounts");
     revalidatePath("/transactions");
-    return { detected: detected.detected, paired, accountsCreated: detected.accountsCreated };
+    return {
+      assigned,
+      detected: detected.detected,
+      paired,
+      accountsCreated: detected.accountsCreated,
+    };
   });
 }
 

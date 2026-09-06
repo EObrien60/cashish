@@ -1,18 +1,26 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/request-context";
 import { accountBalances, unassignedCount } from "@/lib/accounts";
-import { money, fmtDate } from "@/lib/format";
+import { transactionCounts } from "@/lib/transactions";
+import { moneyIn } from "@/lib/format";
 import { Card, PageHeader, EmptyState } from "@/components/ui";
-import { AccountsTable, AssignUnassigned } from "@/components/AccountsView";
+import {
+  AccountsTable,
+  AssignUnassigned,
+  RescanTransfers,
+  SetUpFromTransactions,
+} from "@/components/AccountsView";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
   return withTenant(async () => {
-    const [accounts, unassigned] = await Promise.all([
+    const [accounts, unassigned, counts] = await Promise.all([
       accountBalances(true),
       unassignedCount(),
+      transactionCounts(),
     ]);
+    const ledgerSize = counts.included + counts.excluded;
 
     const live = accounts.filter((a) => !a.archived);
     const inferred = live.filter((a) => a.inferred);
@@ -30,7 +38,11 @@ export default async function AccountsPage() {
           subtitle="Current accounts, cards, savings and currencies — found in your statements, not set up by hand."
         />
 
-        {live.length === 0 ? (
+        {live.length === 0 && ledgerSize > 0 ? (
+          <Card>
+            <SetUpFromTransactions transactionCount={ledgerSize} />
+          </Card>
+        ) : live.length === 0 ? (
           <EmptyState
             title="No accounts yet"
             hint="Import a statement and the accounts in it appear here. Revolut names them in the file — Product on a personal export, Account on a business one."
@@ -49,7 +61,7 @@ export default async function AccountsPage() {
                     Total held ({currency})
                   </div>
                   <div className={`text-2xl font-bold mt-1 ${total < 0 ? "text-money-out" : ""}`}>
-                    {money(total)}
+                    {moneyIn(total, currency)}
                   </div>
                   <div className="text-sm text-ink-faint mt-1">
                     across {live.filter((a) => a.currency === currency).length} account
@@ -81,6 +93,10 @@ export default async function AccountsPage() {
             )}
 
             <AccountsTable accounts={accounts} />
+
+            <Card className="mt-6">
+              <RescanTransfers />
+            </Card>
           </>
         )}
       </div>

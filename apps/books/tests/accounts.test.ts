@@ -310,3 +310,70 @@ TRANSFER,Credit,2026-08-05 09:00:00,2026-08-05 09:00:00,From Current,260.00,0.00
   assert.equal(credit?.balance, 260, "the card's own row, counted once");
   assert.equal(credit?.derivedFromTransfers, 0, "the inferred half stops applying once it is real");
 });
+
+test("a book that predates accounts can be set up from its own transactions", async () => {
+  await reset();
+
+  // The shape of a real existing book: rows imported before accounts existed,
+  // including one internal move and one payment to a person.
+  await asTenant(tenant, async () => {
+    await db.insert(schema.transactions).values([
+      {
+        id: uid(),
+        tenantId: tenant,
+        bookedDate: "2025-07-11",
+        amount: -392.43,
+        description: "Main · EUR → Main · GBP",
+        importBatch: "legacy",
+      },
+      {
+        id: uid(),
+        tenantId: tenant,
+        bookedDate: "2025-08-09",
+        amount: -5456.12,
+        description: "To Quantum Harbour IT Systems Limited",
+        importBatch: "legacy",
+      },
+      {
+        id: uid(),
+        tenantId: tenant,
+        bookedDate: "2025-08-20",
+        amount: -200,
+        description: "To Savings",
+        importBatch: "legacy",
+      },
+    ]);
+  });
+
+  assert.equal(await asTenant(tenant, () => unassignedCount()), 3);
+
+  // What the button does: name the account, assign, then scan.
+  const { id } = await asTenant(tenant, () => ensureAccount({ name: "Main" }));
+  const assigned = await asTenant(tenant, () => assignUnassigned(id));
+  const found = await asTenant(tenant, () => detectTransfers());
+  await asTenant(tenant, () => pairTransfers());
+
+  assert.equal(assigned, 3);
+  assert.equal(await asTenant(tenant, () => unassignedCount()), 0);
+  assert.equal(found.detected, 2, "the exchange and the savings move, not the supplier payment");
+  assert.deepEqual(found.accountsCreated.sort(), ["Main · GBP", "Savings"]);
+
+  const balances = await asTenant(tenant, () => accountBalances());
+  assert.equal(balances.find((b) => b.name === "Savings")?.balance, 200);
+  assert.equal(
+    balances.find((b) => b.name === "Main · GBP")?.unknownIncoming,
+    392.43,
+    "a euro-to-sterling move is known but not counted",
+  );
+
+  // The supplier payment is untouched and still an expense.
+  const inBooks = await asTenant(tenant, () => listTransactions({}));
+  assert.equal(inBooks.length, 1);
+  assert.match(inBooks[0].description ?? "", /Quantum Harbour/);
+});
+
+test("running the scan twice changes nothing the second time", async () => {
+  const again = await asTenant(tenant, () => detectTransfers());
+  assert.equal(again.detected, 0);
+  assert.equal(again.accountsCreated.length, 0);
+});

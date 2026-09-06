@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { money, fmtDate } from "@/lib/format";
+import { moneyIn, fmtDate } from "@/lib/format";
 import { Card } from "./ui";
-import { assignUnassignedAction, updateAccountAction } from "@/app/actions";
+import { assignUnassignedAction, updateAccountAction, recomputeAccountsAction } from "@/app/actions";
 import type { AccountBalance } from "@/lib/accounts";
 
 const KIND_LABELS: Record<string, string> = {
@@ -99,7 +99,7 @@ export function AccountsTable({ accounts }: { accounts: AccountBalance[] }) {
                   a.balance < 0 ? "text-money-out" : ""
                 }`}
               >
-                {money(a.balance)} <span className="text-xs text-ink-faint">{a.currency}</span>
+                {moneyIn(a.balance, a.currency)}
                 {a.derivedFromTransfers !== 0 && a.transactions === 0 && (
                   <div className="text-[11px] font-normal text-ink-faint">from transfers in</div>
                 )}
@@ -187,6 +187,114 @@ export function AssignUnassigned({
       >
         {busy ? "Assigning…" : "Assign"}
       </button>
+    </div>
+  );
+}
+
+type RecomputeResult = {
+  assigned: number;
+  detected: number;
+  paired: number;
+  accountsCreated: string[];
+};
+
+function resultSentence(r: RecomputeResult): string {
+  const parts: string[] = [];
+  if (r.assigned) parts.push(`${r.assigned} transaction${r.assigned === 1 ? "" : "s"} assigned`);
+  if (r.detected) parts.push(`${r.detected} internal transfer${r.detected === 1 ? "" : "s"} found`);
+  if (r.paired) parts.push(`${r.paired} matched to their other half`);
+  if (r.accountsCreated.length) parts.push(`created ${r.accountsCreated.join(", ")}`);
+  return parts.length ? `${parts.join(", ")}.` : "Nothing to change — everything was already sorted.";
+}
+
+/**
+ * The way in for a book that predates accounts.
+ *
+ * Its transactions sit on no account and have never been scanned for
+ * transfers, and until one account exists there is nothing to assign them to —
+ * so naming that account and doing the whole job is one step, not three.
+ */
+export function SetUpFromTransactions({ transactionCount }: { transactionCount: number }) {
+  const router = useRouter();
+  const [, start] = useTransition();
+  const [name, setName] = useState("Main");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<RecomputeResult | null>(null);
+
+  return (
+    <div>
+      <h2 className="font-semibold">Set up accounts from what you already have</h2>
+      <p className="text-sm text-ink-faint mt-0.5 mb-3">
+        This book has {transactionCount} transaction{transactionCount === 1 ? "" : "s"} and no
+        accounts — they were imported before accounts existed. Name the account they came from and
+        cashish will put them on it, then look through them for transfers between your own
+        accounts, creating any it finds on the far side.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex-1 min-w-[200px]">
+          <span className="mb-1 block text-xs font-medium text-ink-soft">Account name</span>
+          <input
+            className="input w-full"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Main"
+          />
+        </label>
+        <button
+          className="btn-primary"
+          disabled={busy || !name.trim()}
+          onClick={() => {
+            setBusy(true);
+            start(async () => {
+              const r = await recomputeAccountsAction({ createAccount: name.trim() });
+              setResult(r);
+              setBusy(false);
+              router.refresh();
+            });
+          }}
+        >
+          {busy ? "Working…" : "Set up"}
+        </button>
+      </div>
+      {result && <p className="mt-3 text-sm text-brand">{resultSentence(result)}</p>}
+    </div>
+  );
+}
+
+/**
+ * Re-runs the scan over the whole ledger.
+ *
+ * Wanted after importing a second account, after renaming one, or simply
+ * because a transfer was missed: detection can only recognise "To Savings" once
+ * it knows what your accounts are called, so the answer changes as the book
+ * fills in.
+ */
+export function RescanTransfers() {
+  const router = useRouter();
+  const [, start] = useTransition();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<RecomputeResult | null>(null);
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        className="btn-outline"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          start(async () => {
+            const r = await recomputeAccountsAction();
+            setResult(r);
+            setBusy(false);
+            router.refresh();
+          });
+        }}
+      >
+        {busy ? "Scanning…" : "Re-scan for transfers"}
+      </button>
+      <span className="text-sm text-ink-faint">
+        {result ? resultSentence(result) : "Looks through every transaction for moves between your own accounts."}
+      </span>
     </div>
   );
 }
