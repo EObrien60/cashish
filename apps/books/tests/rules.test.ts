@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { asTenant, makeTenant, seeded, closePool } from "./harness";
 import { db, schema } from "@cashish/core/db";
-import { and, eq } from "drizzle-orm";
-import { saveRule, listRules, deleteRule, applyRulesToUncategorized, applyRulesToAll } from "../src/lib/rules";
+import { and, eq, isNull } from "drizzle-orm";
+import { saveRule, listRules, deleteRule, acceptRule, applyRulesToUncategorized, applyRulesToAll } from "../src/lib/rules";
 import { createInvoice, nextInvoiceNumber } from "../src/lib/invoices";
 import { createCustomer } from "../src/lib/customers";
 import { uid } from "../src/lib/id";
@@ -133,4 +133,71 @@ test("a historic invoice keeps its own number and leaves the sequence alone", as
     assert.equal(fresh?.number, before);
     assert.notEqual(await nextInvoiceNumber(), before, "and that one does consume it");
   });
+});
+
+/**
+ * Accepting a suggested rule.
+ *
+ * The proposal path built its own rule object and set `applyNow: "uncategorised"`,
+ * which is not a column. Drizzle drops an unknown key without a word, so the
+ * rule was created and nothing was ever categorised — which, from the ledger,
+ * looks exactly like the rule not having been created at all.
+ */
+test("accepting a suggested rule categorises what it matches", async () => {
+  await reset();
+  const lidl = await addTx("LIDL 4471 GALWAY");
+  const other = await addTx("SOMETHING ELSE ENTIRELY");
+
+  const applied = await asTenant(tenant, () =>
+    acceptRule({
+      name: "Lidl",
+      matchValue: "Lidl",
+      direction: "out",
+      categoryId: cat("cat-misc"),
+    }),
+  );
+
+  const rules = await asTenant(tenant, listRules);
+  assert.ok(rules.some((r) => r.matchValue === "Lidl"), "the rule should exist");
+  assert.equal(applied.updated, 1);
+  assert.equal(await categoryOf(lidl), cat("cat-misc"), "the rule must reach the ledger");
+  assert.equal(await categoryOf(other), null, "and must not reach anything else");
+});
+
+/**
+ * Applying rules used to be one UPDATE per matching row. A broad rule on a real
+ * book is a thousand-plus sequential round-trips, which is why "apply rules"
+ * stopped coming back. Rows are grouped by the rule that claims them now, so
+ * this asserts the counts still hold across more rows than fit in one statement.
+ */
+test("a rule matching many rows applies to all of them", async () => {
+  await reset();
+  await asTenant(tenant, async () => {
+    const rows = Array.from({ length: 250 }, (_, i) => ({
+      id: uid(),
+      tenantId: tenant,
+      bookedDate: "2026-07-01",
+      amount: -10,
+      description: `LIDL 4471 GALWAY ${i}`,
+      importBatch: uid(),
+    }));
+    await db.insert(schema.transactions).values(rows);
+  });
+
+  const applied = await asTenant(tenant, () =>
+    acceptRule({ name: "Lidl", matchValue: "LIDL", direction: "out", categoryId: cat("cat-misc") }),
+  );
+  assert.equal(applied.updated, 250);
+
+  const left = await asTenant(tenant, () =>
+    db
+      .select()
+      .from(schema.transactions)
+      .where(and(eq(schema.transactions.tenantId, tenant), isNull(schema.transactions.categoryId))),
+  );
+  assert.equal(left.length, 0, "every matching row should be categorised");
+
+  // And the rule's own counter reflects the whole set, not one statement's worth.
+  const [rule] = await asTenant(tenant, listRules);
+  assert.equal(rule.timesApplied, 250);
 });

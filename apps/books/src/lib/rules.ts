@@ -6,7 +6,7 @@ import {
   validatePosting,
   type Posting,
 } from "./posting";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { uid } from "./id";
 import { notExcluded } from "./transactions";
 
@@ -189,68 +189,116 @@ export async function applyRulesToTransactions(
   if (rules.length === 0) return { matched: 0, updated: 0, recategorised: 0 };
 
   let matched = 0;
-  let updated = 0;
   let recategorised = 0;
-  const applyCounts = new Map<string, number>();
+
+  // Decide first, write second.
+  //
+  // This used to issue one UPDATE per matching row, inside a transaction. On a
+  // book with twelve thousand transactions a single broad rule is twelve
+  // hundred sequential round-trips, and "apply rules" simply never came back.
+  // Every row a given rule claims gets the identical patch, so the rows are
+  // grouped by rule and written in one statement each.
+  const byRule = new Map<string, { rule: CategoryRule; ids: string[] }>();
+
+  for (const t of txs) {
+    const ruleFor = firstMatch(rules, t);
+    // A transfer rule is allowed past the uncategorised filter: taking money
+    // out of the books is a correction, and it is most often needed precisely
+    // on rows something has already categorised.
+    const isTransfer = ruleFor && isPosting(ruleFor.posting)
+      && POSTING_SPECS[ruleFor.posting].excludes;
+    if (opts.onlyUncategorized && t.categoryId && !isTransfer) continue;
+    // An excluded transaction is out of the books, so no rule gets to categorise it.
+    if (t.excluded) continue;
+    const rule = ruleFor;
+    if (!rule) continue;
+    matched++;
+    const before = t.categoryId ?? null;
+    const after = rule.categoryId ?? null;
+    if (before !== null && before !== after) recategorised++;
+    const group = byRule.get(rule.id) ?? { rule, ids: [] };
+    group.ids.push(t.id);
+    byRule.set(rule.id, group);
+  }
+
+  const updated = matched;
+
+  // Chunked to stay under Postgres' 65535 bind-parameter ceiling; one id is one
+  // parameter, so this is only ever a handful of statements per rule.
+  const CHUNK = 1000;
 
   await db.transaction(async (trx) => {
-    for (const t of txs) {
-      const ruleFor = firstMatch(rules, t);
-      // A transfer rule is allowed past the uncategorised filter: taking money
-      // out of the books is a correction, and it is most often needed precisely
-      // on rows something has already categorised.
-      const isTransfer = ruleFor && isPosting(ruleFor.posting)
-        && POSTING_SPECS[ruleFor.posting].excludes;
-      if (opts.onlyUncategorized && t.categoryId && !isTransfer) continue;
-      // An excluded transaction is out of the books, so no rule gets to categorise it.
-      if (t.excluded) continue;
-      const rule = ruleFor;
-      if (!rule) continue;
-      matched++;
-      const before = t.categoryId ?? null;
-      const after = rule.categoryId ?? null;
-      if (before !== null && before !== after) recategorised++;
+    for (const { rule, ids } of byRule.values()) {
       const spec = isPosting(rule.posting) ? POSTING_SPECS[rule.posting] : POSTING_SPECS.other;
-      await trx
-        .update(transactions)
-        .set(
-          spec.excludes
-            ? {
-                // A transfer is your own money moving. Counted nowhere, and the
-                // category goes with it, exactly as excluding by hand does.
-                // Rules could not do this before, so pot transfers needed a
-                // hand-maintained list in a script and came back on re-import.
-                excluded: true,
-                excludedReason: rule.excludedReason || "internal transfer",
-                categoryId: null,
-                vatRateId: null,
-              }
-            : {
-                categoryId: rule.categoryId ?? null,
-                vatRateId: rule.vatRateId ?? null,
-                // Only set when the rule names one. A rule that names nobody
-                // must not clear an attribution made by hand.
-                ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
-                ...(rule.vendorId ? { vendorId: rule.vendorId } : {}),
-                ...(rule.customerId ? { customerId: rule.customerId } : {}),
-              },
-        )
-        .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
-      updated++;
-      applyCounts.set(rule.id, (applyCounts.get(rule.id) ?? 0) + 1);
-    }
-    for (const [ruleId, n] of applyCounts) {
+      const patch = spec.excludes
+        ? {
+            // A transfer is your own money moving. Counted nowhere, and the
+            // category goes with it, exactly as excluding by hand does.
+            // Rules could not do this before, so pot transfers needed a
+            // hand-maintained list in a script and came back on re-import.
+            excluded: true,
+            excludedReason: rule.excludedReason || "internal transfer",
+            categoryId: null,
+            vatRateId: null,
+          }
+        : {
+            categoryId: rule.categoryId ?? null,
+            vatRateId: rule.vatRateId ?? null,
+            // Only set when the rule names one. A rule that names nobody
+            // must not clear an attribution made by hand.
+            ...(rule.employeeId ? { employeeId: rule.employeeId } : {}),
+            ...(rule.vendorId ? { vendorId: rule.vendorId } : {}),
+            ...(rule.customerId ? { customerId: rule.customerId } : {}),
+          };
+
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        await trx
+          .update(transactions)
+          .set(patch)
+          .where(
+            and(eq(transactions.tenantId, tid), inArray(transactions.id, ids.slice(i, i + CHUNK))),
+          );
+      }
+
       // The only raw SQL left in the query layer: an atomic increment, with no
       // table reference of its own to scope. The surrounding where() carries the
       // tenant filter.
       await trx
         .update(categoryRules)
-        .set({ timesApplied: sql`${categoryRules.timesApplied} + ${n}` })
-        .where(and(eq(categoryRules.tenantId, tid), eq(categoryRules.id, ruleId)));
+        .set({ timesApplied: sql`${categoryRules.timesApplied} + ${ids.length}` })
+        .where(and(eq(categoryRules.tenantId, tid), eq(categoryRules.id, rule.id)));
     }
   });
 
   return { matched, updated, recategorised };
+}
+
+/**
+ * Accepting a suggested rule: save it, then apply it.
+ *
+ * Both halves, in one place, because they were separated once and the second
+ * was silently lost — the rule was created with an `applyNow` key that is not a
+ * column, drizzle dropped it, and a person who accepted fifteen suggestions got
+ * fifteen rules and no categorised transactions. Nothing about a suggestion is
+ * privileged: this is the ordinary saveRule followed by the ordinary sweep.
+ */
+export async function acceptRule(input: {
+  name: string;
+  matchValue: string;
+  direction: string;
+  categoryId: string | null;
+}): Promise<ApplyResult> {
+  await saveRule({
+    name: input.name,
+    matchValue: input.matchValue,
+    matchField: "description",
+    matchType: "contains",
+    direction: input.direction,
+    categoryId: input.categoryId,
+    vatRateId: null,
+    enabled: true,
+  });
+  return applyRulesToUncategorized();
 }
 
 // Sweep all currently-uncategorised transactions.

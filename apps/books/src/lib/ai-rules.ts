@@ -1,7 +1,7 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
-import { db, schema, tenantId } from "@cashish/core/db";
+import { and, eq, gte, ilike, lt, sql } from "drizzle-orm";
+import { db, schema, tenantId, type CategoryRule } from "@cashish/core/db";
 import { REPORT_MODEL, aiIsConfigured, describeFailure, gatewayOptions, type AiResult } from "./ai";
 import { merchantLabel } from "./insights";
 import { listCategories } from "./lookups";
@@ -119,27 +119,41 @@ async function clustersFor(accountId: string | null): Promise<Cluster[]> {
     .sort((a, b) => b.total - a.total);
 }
 
-/** What a candidate rule would actually catch on this account. Never guessed. */
+/** Postgres LIKE metacharacters, so a merchant called "50%" searches for itself. */
+const likeEscape = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * What a candidate rule would actually catch on this account. Never guessed.
+ *
+ * The match runs in Postgres. It used to select every non-excluded row on the
+ * account and filter in JavaScript, which on a twelve-thousand-transaction book
+ * meant hauling the whole ledger across the wire on EVERY tool call the model
+ * made — and it makes several per merchant. The run never finished. ILIKE
+ * '%value%' is exactly what the JS matcher does for a case-insensitive
+ * "contains", so the counts are unchanged; only the matched rows come back now,
+ * and `alreadyClaimed` still uses the real matcher over that much smaller set.
+ */
 async function measure(
   accountId: string | null,
   matchValue: string,
   direction: "in" | "out" | "any",
+  rules: CategoryRule[],
 ) {
-  const rows = await db
+  const matched = await db
     .select()
     .from(transactions)
-    .where(and(eq(transactions.tenantId, tenantId()), notExcluded(), ofAccount(accountId)));
-  const rules = await listRules();
+    .where(
+      and(
+        eq(transactions.tenantId, tenantId()),
+        notExcluded(),
+        ofAccount(accountId),
+        ilike(transactions.description, `%${likeEscape(matchValue)}%`),
+        // Mirrors ruleMatches: "in" keeps amount >= 0, "out" keeps amount < 0.
+        direction === "in" ? gte(transactions.amount, 0) : undefined,
+        direction === "out" ? lt(transactions.amount, 0) : undefined,
+      ),
+    );
 
-  const candidate = {
-    enabled: true,
-    matchField: "description",
-    matchType: "contains",
-    matchValue,
-    direction,
-  } as unknown as Parameters<typeof ruleMatches>[0];
-
-  const matched = rows.filter((t) => ruleMatches(candidate, t));
   return {
     wouldMatch: matched.length,
     wouldMatchUncategorised: matched.filter((t) => !t.categoryId).length,
@@ -229,7 +243,7 @@ export async function proposeRulesForAccount(input: {
           text: z.string().describe("Substring to look for, case-insensitive."),
         }),
         execute: async ({ text }) => {
-          const found = await measure(input.accountId, text, "any");
+          const found = await measure(input.accountId, text, "any", existing);
           return {
             matches: found.wouldMatch,
             uncategorised: found.wouldMatchUncategorised,
@@ -245,7 +259,8 @@ export async function proposeRulesForAccount(input: {
           matchValue: z.string(),
           direction: z.enum(["in", "out", "any"]),
         }),
-        execute: async ({ matchValue, direction }) => measure(input.accountId, matchValue, direction),
+        execute: async ({ matchValue, direction }) =>
+          measure(input.accountId, matchValue, direction, existing),
       }),
       proposeRule: tool({
         description:
@@ -268,7 +283,7 @@ export async function proposeRulesForAccount(input: {
             return { error: `Already proposed a rule matching "${value}".` };
           }
 
-          const found = await measure(input.accountId, value, p.direction);
+          const found = await measure(input.accountId, value, p.direction, existing);
           if (found.wouldMatch === 0) {
             return { error: `"${value}" matches nothing on this account. Try findSimilar first.` };
           }
