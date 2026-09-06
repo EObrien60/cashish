@@ -75,6 +75,52 @@ const tenantId = () =>
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" });
 
+// --- Accounts ---------------------------------------------------------------
+// Where a transaction sat: a current account, a credit card, a savings pot, a
+// second currency. One book, several accounts — which is how every real set of
+// books works and how Revolut exports arrive.
+//
+// Revolut names the account in the statement itself: `Product` in a personal
+// export ("Current", "Savings", "Credit"), `Account` in a business one ("Main",
+// "EUR", "GBP"). Import reads that column and creates what it finds, so the
+// accounts are discovered rather than configured.
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    /** current | savings | credit_card | pocket | other. */
+    kind: text("kind").notNull().default("current"),
+    currency: text("currency").notNull().default("EUR"),
+    /**
+     * What the statement called it — the raw `Product`/`Account` value — so a
+     * later import of the same account matches even after it has been renamed.
+     */
+    externalRef: text("external_ref").default(""),
+    /**
+     * True when the account was inferred from the other side of a transfer
+     * rather than seen in a statement. It exists so the money that moved there
+     * has somewhere to go; its balance is derived from those transfers alone
+     * until its own statement is imported. Flagged, because a balance built
+     * from one side of the story should say so.
+     */
+    inferred: boolean("inferred").notNull().default(false),
+    /** Balance before the first imported transaction. */
+    openingBalance: doublePrecision("opening_balance").notNull().default(0),
+    archived: boolean("archived").notNull().default(false),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("account_tenant_idx").on(t.tenantId, t.archived),
+    // Two accounts of the same name in one book would make every "which account
+    // was that?" answer ambiguous, including the importer's.
+    uniqueIndex("account_name_idx").on(t.tenantId, t.name),
+  ],
+);
+
+export type AccountKind = "current" | "savings" | "credit_card" | "pocket" | "other";
+
 // --- Books ------------------------------------------------------------------
 
 export const settings = pgTable("settings", {
@@ -200,12 +246,29 @@ export const transactions = pgTable(
      * was answerable for money out and not for money in. This closes that.
      */
     customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    /** Which account this line sat on. Null only for rows imported before accounts existed. */
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    /**
+     * Where the money went, when it went to another of your own accounts.
+     *
+     * Set as soon as a line is recognised as a transfer, which is before — and
+     * independently of — the other side arriving. That is the point: the euro
+     * that left the current account for the credit card is not spending, and
+     * has to stop being counted as spending on the day it is imported, not on
+     * the day the card statement turns up.
+     */
+    transferAccountId: text("transfer_account_id").references(() => accounts.id, {
+      onDelete: "set null",
+    }),
+    /** The line on the other account, once both sides have been imported. */
+    transferPeerId: text("transfer_peer_id"),
     importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [
     primaryKey({ columns: [t.tenantId, t.id] }),
     index("tx_booked_idx").on(t.tenantId, t.bookedDate),
+    index("tx_account_idx").on(t.tenantId, t.accountId),
     index("tx_cat_idx").on(t.tenantId, t.categoryId),
     index("tx_excluded_idx").on(t.tenantId, t.excluded),
     index("tx_employee_idx").on(t.tenantId, t.employeeId),

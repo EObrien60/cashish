@@ -36,12 +36,15 @@ type Props = {
   people?: { id: string; name: string }[];
   /** Suppliers, for attributing a payment to one of them. */
   vendors?: { id: string; name: string }[];
+  /** Every account in the book, for the filter and the per-row label. */
+  accounts?: { id: string; name: string; currency: string }[];
   /** What the server filtered by; these live in the URL, not in this component. */
   filters: {
     search: string;
     direction: "all" | "in" | "out";
     uncategorized: boolean;
     tab: "active" | "excluded";
+    accountId: string;
   };
   /** Count and totals for the WHOLE filtered set, not just the page of it below. */
   summary: { count: number; inSum: number; outSum: number };
@@ -56,6 +59,7 @@ export function TransactionsView({
   receiptCounts,
   people = [],
   vendors = [],
+  accounts = [],
   filters,
   summary: totals,
   counts,
@@ -71,6 +75,10 @@ export function TransactionsView({
   const direction = filters.direction;
   const onlyUncat = filters.uncategorized;
   const tab = filters.tab;
+  const accountName = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a.name])),
+    [accounts],
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
@@ -292,7 +300,31 @@ export function TransactionsView({
                 </span>
               )}
               <span className="text-ink-faint">{summary.parsed} rows read</span>
+              {summary.accounts && summary.accounts.length > 0 && (
+                <span className="text-ink-faint">
+                  {summary.accounts.map((a) => `${a.name}${a.created ? " (new)" : ""}`).join(", ")}
+                </span>
+              )}
+              {summary.transfers && summary.transfers.detected > 0 && (
+                <span className="text-brand">
+                  {summary.transfers.detected} internal transfer
+                  {summary.transfers.detected === 1 ? "" : "s"} recognised
+                  {summary.transfers.paired > 0 && `, ${summary.transfers.paired} matched up`}
+                </span>
+              )}
             </div>
+            {summary.transfers && summary.transfers.accountsCreated.length > 0 && (
+              <p className="mt-2 text-sm text-ink-soft">
+                Money moved to {summary.transfers.accountsCreated.join(", ")}, so{" "}
+                {summary.transfers.accountsCreated.length === 1
+                  ? "that account was"
+                  : "those accounts were"}{" "}
+                created to hold it.{" "}
+                <a href="/accounts" className="underline">
+                  See accounts
+                </a>
+              </p>
+            )}
             {summary.errors.length > 0 && (
               <ul className="mt-2 list-inside list-disc text-money-out">
                 {summary.errors.slice(0, 5).map((e, i) => (
@@ -318,6 +350,20 @@ export function TransactionsView({
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        {accounts.length > 1 && (
+          <select
+            className="input w-auto"
+            value={filters.accountId}
+            onChange={(e) => setParams({ account: e.target.value || null })}
+          >
+            <option value="">All accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="seg inline-flex rounded-lg border border-line bg-card p-1 text-sm">
           {(["all", "in", "out"] as const).map((d) => (
             <button
@@ -503,9 +549,18 @@ export function TransactionsView({
                             <div className="truncate font-medium">
                               {t.description || t.reference || t.type}
                             </div>
-                            {(t.reference || t.type) && (
+                            {(t.reference || t.type || t.accountId) && (
                               <div className="truncate text-xs text-ink-faint">
-                                {[t.type, t.reference].filter(Boolean).join(" · ")}
+                                {[
+                                  // Which account it was on, first: with several
+                                  // accounts in one ledger it is the thing that
+                                  // tells two similar lines apart.
+                                  t.accountId ? accountName.get(t.accountId) : null,
+                                  t.type,
+                                  t.reference,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
                               </div>
                             )}
                           </div>

@@ -15,6 +15,8 @@ import {
 import { uid } from "./id";
 import type { ParsedRow } from "./import";
 import { applyRulesToTransactions } from "./rules";
+import { ensureAccount, nameFromStatement } from "./accounts";
+import { detectTransfers, pairTransfers } from "./transfers";
 
 const { transactions } = schema;
 
@@ -25,6 +27,10 @@ export type ImportSummary = {
   duplicates: number;
   autoCategorized: number;
   errors: string[];
+  /** Accounts the statement turned out to cover, and which of them were new. */
+  accounts?: { name: string; created: boolean; rows: number }[];
+  /** Internal transfers recognised, and accounts inferred from their far side. */
+  transfers?: { detected: number; paired: number; accountsCreated: string[] };
 };
 
 /** Scopes every transaction query to the calling tenant. */
@@ -36,9 +42,19 @@ const ofTenant = () => eq(transactions.tenantId, tenantId());
 //
 // Dedupe is per tenant — the primary key is (tenant_id, id) because a provider
 // transaction id is unique to the provider, not to this database.
+/**
+ * Imports a statement.
+ *
+ * `fallbackAccount` is the account to use for rows whose statement did not name
+ * one. A Revolut export always does — `Product` on a personal one, `Account` on
+ * a business one — but a file from anywhere else may not, and a transaction on
+ * no account at all is a transaction that can never be reconciled against a
+ * bank balance.
+ */
 export async function importTransactions(
   rows: ParsedRow[],
   parseErrors: string[],
+  options: { fallbackAccount?: string } = {},
 ): Promise<ImportSummary> {
   const batch = uid();
   const tid = tenantId();
@@ -66,9 +82,36 @@ export async function importTransactions(
   const fresh = rows.filter((r) => !existing.has(r.id));
   const duplicates = rows.length - fresh.length;
 
+  // Which account each row sat on. The statement names it; where it does not,
+  // everything lands on one account rather than on none.
+  const accountSummary = new Map<string, { name: string; created: boolean; rows: number }>();
+  const accountIdFor = new Map<string, string>();
+  for (const r of fresh) {
+    const raw = (r.account ?? "").trim();
+    const name = nameFromStatement(raw, options.fallbackAccount ?? "Main");
+    if (!accountIdFor.has(name)) {
+      const { id, created } = await ensureAccount({
+        name,
+        externalRef: raw || name,
+        currency: r.currency ?? "EUR",
+        inferred: false,
+      });
+      accountIdFor.set(name, id);
+      accountSummary.set(name, { name, created, rows: 0 });
+    }
+    accountSummary.get(name)!.rows += 1;
+  }
+
   let autoCategorized = 0;
   if (fresh.length > 0) {
-    const insertRows = fresh.map((r) => ({ ...r, tenantId: tid, importBatch: batch }));
+    const insertRows = fresh.map((r) => ({
+      ...r,
+      tenantId: tid,
+      importBatch: batch,
+      accountId:
+        accountIdFor.get(nameFromStatement((r.account ?? "").trim(), options.fallbackAccount ?? "Main")) ??
+        null,
+    }));
     // Chunked to stay under Postgres' 65535 bind-parameter ceiling; each row is
     // ~25 parameters, so 200 rows is comfortably inside it.
     const CHUNK = 200;
@@ -85,6 +128,13 @@ export async function importTransactions(
     autoCategorized = (await applyRulesToTransactions(freshRows)).updated;
   }
 
+  // Transfers are recognised on the way in, so money moved between your own
+  // accounts never spends a moment counted as expenditure. Pairing then runs
+  // over the whole ledger, because the other half of a transfer imported today
+  // may have arrived in a file three weeks ago.
+  const detected = await detectTransfers({ batch });
+  const paired = await pairTransfers();
+
   return {
     batch,
     parsed: rows.length,
@@ -92,6 +142,12 @@ export async function importTransactions(
     duplicates,
     autoCategorized,
     errors: parseErrors,
+    accounts: [...accountSummary.values()],
+    transfers: {
+      detected: detected.detected,
+      paired,
+      accountsCreated: detected.accountsCreated,
+    },
   };
 }
 
@@ -109,6 +165,8 @@ export type TxFilter = {
   categoryId?: string | "none";
   direction?: "in" | "out";
   uncategorized?: boolean;
+  /** One account's ledger, rather than the whole book's. */
+  accountId?: string;
   /**
    * Excluded transactions are hidden everywhere by default — that is the point of
    * excluding them. "only" is the excluded tab; "all" is for reconciling against a
@@ -134,6 +192,7 @@ function conditionsFor(filter: TxFilter): SQL[] {
   if (filter.direction === "in") conds.push(gte(transactions.amount, 0));
   if (filter.direction === "out") conds.push(lte(transactions.amount, 0));
   if (filter.uncategorized) conds.push(isNull(transactions.categoryId));
+  if (filter.accountId) conds.push(eq(transactions.accountId, filter.accountId));
   if (filter.categoryId === "none") {
     conds.push(isNull(transactions.categoryId));
   } else if (filter.categoryId) {

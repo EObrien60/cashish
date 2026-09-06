@@ -38,6 +38,7 @@ const SECTIONS: {
   {
     label: "Banking",
     items: [
+      { href: "/accounts", label: "Accounts", icon: IconCoins },
       { href: "/transactions", label: "Transactions", icon: IconLedger },
       { href: "/rules", label: "Rules", icon: IconRules },
       { href: "/budget", label: "Budget", icon: IconCoins, personalOnly: true },
