@@ -40,6 +40,29 @@ export type MonthTotals = {
   net: number;
 };
 
+/**
+ * A cost that turns up every month, and roughly what it costs.
+ *
+ * The useful half of "who got it" on a personal book: rent, the electricity, a
+ * phone bill and four subscriptions are the money that is already spoken for
+ * before the month starts, and they are worth separating from the fifty other
+ * things that happened once.
+ *
+ * `monthly` is the MEDIAN of the monthly totals rather than the mean, because
+ * one annual insurance payment inside a monthly series would drag an average
+ * somewhere the money never goes.
+ */
+export type Commitment = {
+  label: string;
+  category: string | null;
+  /** Median spend per month it appeared in. */
+  monthly: number;
+  /** Distinct months it appeared in, out of `monthsInPeriod`. */
+  months: number;
+  count: number;
+  lastSeen: string;
+};
+
 export type CategorySpend = {
   category: string;
   kind: string;
@@ -64,8 +87,12 @@ export type FactSheet = {
     uncategorisedCount: number;
   };
   months: MonthTotals[];
+  monthsInPeriod: number;
   categories: CategorySpend[];
   merchants: MerchantSpend[];
+  /** Costs that recur monthly, largest first, and what they add up to. */
+  commitments: Commitment[];
+  commitmentsMonthly: number;
   accounts: {
     name: string;
     kind: string;
@@ -98,6 +125,27 @@ export function merchantLabel(description: string): string {
 
 const monthOf = (iso: string) => iso.slice(0, 7);
 
+/** Middle value, so one annual bill inside a monthly series cannot drag it. */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** Every YYYY-MM the period touches, so "3 of 9 months" has a denominator. */
+function monthsSpanned(from: string, to: string): string[] {
+  const out: string[] = [];
+  const start = new Date(from + "T00:00:00Z");
+  const end = new Date(to + "T00:00:00Z");
+  const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cur <= end) {
+    out.push(cur.toISOString().slice(0, 7));
+    cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+  return out;
+}
+
 function shiftPeriod(from: string, to: string): { from: string; to: string } {
   const a = new Date(from + "T00:00:00Z").getTime();
   const b = new Date(to + "T00:00:00Z").getTime();
@@ -129,15 +177,20 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
     accountBalances(),
   ]);
 
-  // Transfers are excluded rows, so they are absent above — counted separately,
-  // because "you moved €20,000 to savings" is worth saying and is not spending.
+  // Money moved between the owner's own accounts, counted apart from spending.
+  //
+  // This used to require `excluded = true`, on the assumption that a transfer is
+  // always an excluded row. It is not: DETECTION sets transferAccountId, while
+  // EXCLUDING is a separate decision that only happens if somebody writes a
+  // transfer rule. So on a real book every recognised-but-not-excluded transfer
+  // was missing from this figure and present in the spending instead — "To EUR
+  // Saving" was the largest merchant on a personal book, at €29,388.
   const moved = await db
     .select({ total: sql<number>`coalesce(sum(abs(${transactions.amount})), 0)` })
     .from(transactions)
     .where(
       and(
         inRange(input.from, input.to),
-        eq(transactions.excluded, true),
         sql`${transactions.transferAccountId} is not null`,
         sql`${transactions.amount} < 0`,
       ),
@@ -151,12 +204,26 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
   let uncategorisedCount = 0;
   const byMonth = new Map<string, { in: number; out: number }>();
   const byCategory = new Map<string, { total: number; count: number; kind: string }>();
+  // `months` maps YYYY-MM to what this merchant took that month — a set of
+  // month keys was enough to say "recurring", but not to say how much a month.
   const byMerchant = new Map<
     string,
-    { total: number; count: number; category: string | null; months: Set<string>; first: string; last: string }
+    {
+      total: number;
+      count: number;
+      category: string | null;
+      months: Map<string, number>;
+      first: string;
+      last: string;
+    }
   >();
 
   for (const t of rows) {
+    // A recognised transfer is your own money changing pockets. It is neither
+    // income nor spending, it is nobody's merchant, and it belongs to no
+    // category — it is reported once, as movedBetweenAccounts.
+    if (t.transferAccountId) continue;
+
     const m = monthOf(t.bookedDate);
     const bucket = byMonth.get(m) ?? { in: 0, out: 0 };
     if (t.amount >= 0) {
@@ -173,8 +240,13 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
       uncategorisedOut += Math.abs(t.amount);
       uncategorisedCount += 1;
     }
-    const key = cat?.name ?? "Uncategorised";
-    const c = byCategory.get(key) ?? { total: 0, count: 0, kind: cat?.kind ?? "expense" };
+    // Uncategorised money in and uncategorised money out are two different
+    // holes, and summing them under one "expense" line reported more spending
+    // than the ledger's own total out — €213,721 of "where it went" against
+    // €130,434 that actually went anywhere.
+    const kind = cat?.kind ?? (t.amount >= 0 ? "income" : "expense");
+    const key = cat?.name ?? (t.amount >= 0 ? "Uncategorised income" : "Uncategorised");
+    const c = byCategory.get(key) ?? { total: 0, count: 0, kind };
     c.total += Math.abs(t.amount);
     c.count += 1;
     byCategory.set(key, c);
@@ -187,13 +259,13 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
         total: 0,
         count: 0,
         category: cat?.name ?? null,
-        months: new Set<string>(),
+        months: new Map<string, number>(),
         first: t.bookedDate,
         last: t.bookedDate,
       };
       seen.total += Math.abs(t.amount);
       seen.count += 1;
-      seen.months.add(m);
+      seen.months.set(m, round2((seen.months.get(m) ?? 0) + Math.abs(t.amount)));
       if (t.bookedDate < seen.first) seen.first = t.bookedDate;
       if (t.bookedDate > seen.last) seen.last = t.bookedDate;
       if (!seen.category && cat) seen.category = cat.name;
@@ -205,13 +277,43 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
   // implied. Only categories are compared: merchant-level noise is not signal.
   const priorByCategory = new Map<string, number>();
   for (const t of prior) {
+    if (t.transferAccountId) continue;
     const cat = t.categoryId ? catName.get(t.categoryId) : null;
-    const key = cat?.name ?? "Uncategorised";
+    const key = cat?.name ?? (t.amount >= 0 ? "Uncategorised income" : "Uncategorised");
     priorByCategory.set(key, (priorByCategory.get(key) ?? 0) + Math.abs(t.amount));
   }
 
   const monthCount = Math.max(1, byMonth.size);
   const groups = groupAccounts(balances);
+
+  // ---- what recurs, and what it costs a month ------------------------------
+  //
+  // Same shape as the forecast's repeating-expense rule, and for the same
+  // reason: frequent is not enough, a cost also has to be CURRENT. A gym
+  // cancelled in March still clears "appeared in half the months" of a
+  // year-to-date period, and listing it under what you spend every month is
+  // exactly the wrong direction of error.
+  const period = monthsSpanned(input.from, input.to);
+  const monthsInPeriod = Math.max(1, period.length);
+  const threshold = Math.max(2, Math.ceil(monthsInPeriod / 2));
+  const recent = new Set(period.slice(-2));
+
+  const commitments: Commitment[] = [];
+  for (const [label, v] of byMerchant) {
+    if (v.months.size < threshold) continue;
+    if (![...v.months.keys()].some((m) => recent.has(m))) continue;
+    const monthly = round2(median([...v.months.values()]));
+    if (monthly === 0) continue;
+    commitments.push({
+      label,
+      category: v.category,
+      monthly,
+      months: v.months.size,
+      count: v.count,
+      lastSeen: v.last,
+    });
+  }
+  commitments.sort((a, b) => b.monthly - a.monthly);
 
   return {
     from: input.from,
@@ -226,6 +328,9 @@ export async function buildFactSheet(input: { from: string; to: string }): Promi
       uncategorisedOut: round2(uncategorisedOut),
       uncategorisedCount,
     },
+    monthsInPeriod,
+    commitments,
+    commitmentsMonthly: round2(commitments.reduce((a, c) => a + c.monthly, 0)),
     months: [...byMonth.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, v]) => ({

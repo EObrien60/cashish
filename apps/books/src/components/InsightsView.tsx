@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { money } from "@/lib/format";
+import { money, round2 } from "@/lib/format";
 import { Card } from "./ui";
 import { generateReportAction } from "@/app/actions";
 import type { FactSheet } from "@/lib/insights";
@@ -123,6 +123,9 @@ export function InsightsView({
   const [busy, setBusy] = useState(false);
 
   const topExpense = facts.categories.filter((c) => c.kind === "expense").slice(0, 8);
+  // What is left after the standing costs — the number people actually want,
+  // and the reason the commitments panel is worth its space.
+  const discretionary = round2(facts.totals.out - facts.commitmentsMonthly * facts.monthsInPeriod);
 
   return (
     <div className="space-y-6">
@@ -168,6 +171,55 @@ export function InsightsView({
         <MonthBars facts={facts} />
       </Card>
 
+      {facts.commitments.length > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Every month, whatever happens</h2>
+              <p className="mt-0.5 text-sm text-ink-faint">
+                Costs that turned up in at least half the months here and are still
+                running. The figure is the median month, so one annual renewal inside a
+                monthly series does not inflate it.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-money-out">
+                {money(facts.commitmentsMonthly)}
+              </div>
+              <div className="text-xs text-ink-faint">a month, committed</div>
+            </div>
+          </div>
+
+          <div className="mt-4 divide-y divide-line">
+            {facts.commitments.slice(0, 12).map((c) => (
+              <div key={c.label} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">
+                  {c.label}
+                  {c.category && (
+                    <span className="ml-2 text-xs text-ink-faint">{c.category}</span>
+                  )}
+                </span>
+                <span className="flex shrink-0 items-baseline gap-3">
+                  <span className="text-xs text-ink-faint">
+                    {c.months} of {facts.monthsInPeriod} months
+                  </span>
+                  <span className="tabular font-medium">{money(c.monthly)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {discretionary > 0 && (
+            <p className="mt-4 border-t border-line pt-3 text-sm text-ink-soft">
+              Everything else came to <strong>{money(discretionary)}</strong> across{" "}
+              {facts.monthsInPeriod} month{facts.monthsInPeriod === 1 ? "" : "s"} — roughly{" "}
+              {money(round2(discretionary / facts.monthsInPeriod))} a month that was not
+              already spoken for.
+            </p>
+          )}
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="font-semibold mb-3">Where it went</h2>
@@ -185,7 +237,11 @@ export function InsightsView({
           )}
         </Card>
         <Card>
-          <h2 className="font-semibold mb-3">Who got it</h2>
+          <h2 className="font-semibold">Who got it</h2>
+          <p className="mb-3 mt-0.5 text-xs text-ink-faint">
+            Money that left your accounts. Transfers between your own are not here — they
+            are counted above as moved, not spent.
+          </p>
           {facts.merchants.length === 0 ? (
             <p className="text-sm text-ink-faint">No spending in this period.</p>
           ) : (
@@ -194,7 +250,9 @@ export function InsightsView({
               rows={facts.merchants.slice(0, 10).map((m) => ({
                 label: m.label,
                 value: m.total,
-                sub: `${m.count}×`,
+                // "12× · monthly" says more than "12×": it distinguishes a
+                // standing cost from a dozen unrelated visits.
+                sub: `${m.count}×${m.recurring ? " · monthly" : ""}`,
               }))}
             />
           )}
