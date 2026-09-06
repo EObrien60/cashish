@@ -65,6 +65,10 @@ Write plainly, for the person whose money it is. No filler, no "in conclusion",
 no restating the question. Prefer the specific over the general: name the
 merchant, name the category, give the figure.
 
+Never quote a field name from the fact sheet. Write "€130,434 of spending has
+no category yet", not "uncategorisedOut was €130,434.15". The reader has never
+seen the data structure and should not learn it from you.
+
 If the books look untidy — a lot uncategorised, an account with no statement, a
 cost that has jumped — say so directly in watchOut. That is more useful than
 praise.
@@ -76,9 +80,20 @@ function factsForModel(facts: FactSheet) {
   // Trimmed deliberately: the model is given what it needs to comment on, not
   // the ledger. Fewer tokens, and nobody's individual transactions leave the
   // database.
+  // Labelled, not the raw shape. Handed `uncategorisedOut` and
+  // `movedBetweenAccounts`, the model quotes those names back at the reader —
+  // it did, in the first real report — and "uncategorisedOut was €130,434.15"
+  // is a variable name in a sentence, not a sentence.
   return {
     period: { from: facts.from, to: facts.to, currency: facts.currency, book: facts.bookKind },
-    totals: facts.totals,
+    totals: {
+      "money in": facts.totals.in,
+      "money out": facts.totals.out,
+      "net": facts.totals.net,
+      "moved between the owner's own accounts (not spending)": facts.totals.movedBetweenAccounts,
+      "spending with no category yet": facts.totals.uncategorisedOut,
+      "number of transactions with no category": facts.totals.uncategorisedCount,
+    },
     months: facts.months,
     categories: facts.categories.slice(0, 15),
     topMerchants: facts.merchants.slice(0, 20),
