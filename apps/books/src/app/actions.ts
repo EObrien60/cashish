@@ -1,6 +1,8 @@
 "use server";
 
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
+import { generateReport } from "@/lib/ai-report";
+import { proposeRules } from "@/lib/ai-rules";
 import {
   updateAccount,
   assignUnassigned,
@@ -599,6 +601,47 @@ export async function deletePayRunAction(id: string) {
 }
 
 // ---- Settings -------------------------------------------------------------
+
+// --- AI ---------------------------------------------------------------------
+
+export async function generateReportAction(from: string, to: string) {
+  // books:read, not write: a report changes nothing. The capability check is
+  // still here so a signed-out request cannot spend tokens.
+  return withCapability("books:read", async () => generateReport({ from, to }));
+}
+
+export async function proposeRulesAction() {
+  return withCapability("books:read", async () => proposeRules());
+}
+
+/**
+ * Accepting a proposal. Note what this does NOT do: the model's suggestion is
+ * not stored anywhere and has no privileged path. It arrives back here as an
+ * ordinary rule and goes through the ordinary saveRule, dry-run count and all.
+ */
+export async function acceptProposedRuleAction(input: {
+  name: string;
+  matchValue: string;
+  direction: "in" | "out" | "any";
+  categoryId: string;
+}) {
+  return withCapability("books:write", async () => {
+    const result = await saveRule({
+      name: input.name,
+      matchValue: input.matchValue,
+      matchField: "description",
+      matchType: "contains",
+      direction: input.direction,
+      categoryId: input.categoryId,
+      enabled: true,
+      applyNow: "uncategorised",
+    } as never);
+    revalidatePath("/rules");
+    revalidatePath("/transactions");
+    revalidatePath("/insights");
+    return result;
+  });
+}
 
 // --- Contracts --------------------------------------------------------------
 

@@ -17,6 +17,7 @@ import {
   IconRules,
   IconPayroll,
   IconMenu,
+  IconWand,
 } from "./icons";
 
 // Grouped like a macOS source list. The section labels are hidden on the web
@@ -65,6 +66,7 @@ const SECTIONS: {
   {
     label: "Reporting",
     items: [
+      { href: "/insights", label: "Where it went", icon: IconWand },
       { href: "/reports", label: "Reports", icon: IconReport },
       { href: "/reports/cashflow", label: "Cash flow", icon: IconReport },
       { href: "/vat", label: "VAT return", icon: IconVat, businessOnly: true },
