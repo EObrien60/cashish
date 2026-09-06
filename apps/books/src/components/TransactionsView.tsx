@@ -13,6 +13,7 @@ import {
   setTxVendorAction,
   applyRulesAction,
   setExcludedAction,
+  markTransferAction,
 } from "@/app/actions";
 import type { ImportSummary } from "@/lib/transactions";
 import { Card, EmptyState, Dot } from "@/components/ui";
@@ -234,6 +235,27 @@ export function TransactionsView({
       );
       router.refresh();
       setTimeout(() => setRulesMsg(null), 5000);
+    });
+  }
+
+  /**
+   * Money moved to another of your own accounts, said by hand.
+   *
+   * Detection can recognise "To Savings" and "Main · EUR → Main · GBP", but it
+   * cannot tell a move to your own account called Ethan from a payment to a
+   * person called Ethan — that is missing information, not a missing pattern.
+   * So it is asked, once, and both halves stop being counted as spending.
+   */
+  function markAsTransfer(accountId: string) {
+    const ids = [...selected];
+    startTransition(async () => {
+      for (const id of ids) await markTransferAction(id, accountId);
+      setSelected(new Set());
+      setRulesMsg(
+        `${ids.length} transaction${ids.length === 1 ? "" : "s"} marked as moved between your own accounts — no longer counted as spending.`,
+      );
+      router.refresh();
+      setTimeout(() => setRulesMsg(null), 6000);
     });
   }
 
@@ -519,6 +541,31 @@ export function TransactionsView({
                     {c.name} ({c.kind})
                   </option>
                 ))}
+              </select>
+            </>
+          )}
+          {tab === "active" && accounts.length > 0 && (
+            <>
+              <span className="text-ink-faint">Moved to:</span>
+              <select
+                className="input max-w-xs py-1.5"
+                defaultValue=""
+                title="These moved to another of your own accounts — not spending"
+                onChange={(e) => {
+                  if (e.target.value) markAsTransfer(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  Another of my accounts…
+                </option>
+                {accounts
+                  .filter((a) => a.id !== filters.accountId)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
               </select>
             </>
           )}
