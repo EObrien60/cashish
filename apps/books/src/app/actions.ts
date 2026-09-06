@@ -64,6 +64,7 @@ import {
   deleteRule,
   reorderRule,
   applyRulesToAll,
+  acceptRule,
   RulePostingError,
   type RuleInput,
 } from "@/lib/rules";
@@ -732,20 +733,11 @@ export async function acceptProposedRuleAction(input: {
   categoryId: string;
 }) {
   return withCapability("books:write", async () => {
-    const result = await saveRule({
-      name: input.name,
-      matchValue: input.matchValue,
-      matchField: "description",
-      matchType: "contains",
-      direction: input.direction,
-      categoryId: input.categoryId,
-      enabled: true,
-      applyNow: "uncategorised",
-    } as never);
+    const applied = await acceptRule(input);
     revalidatePath("/rules");
     revalidatePath("/transactions");
     revalidatePath("/insights");
-    return result;
+    return applied;
   });
 }
 
