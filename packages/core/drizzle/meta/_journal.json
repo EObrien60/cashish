@@ -71,6 +71,13 @@
       "when": 1788697062699,
       "tag": "0009_luxuriant_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788721489805,
+      "tag": "0010_tough_captain_cross",
+      "breakpoints": true
     }
   ]
 }

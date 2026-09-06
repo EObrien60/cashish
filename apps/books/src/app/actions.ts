@@ -4,6 +4,15 @@ import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
 import { generateReport } from "@/lib/ai-report";
 import { proposeRulesForAccount, accountsNeedingRules } from "@/lib/ai-rules";
 import {
+  saveDocument,
+  extractDocument,
+  confirmAsBill,
+  linkToTransaction,
+  candidateTransactions,
+  rejectDocument,
+  deleteDocument,
+} from "@/lib/documents";
+import {
   updateAccount,
   assignUnassigned,
   ensureAccount,
@@ -601,6 +610,99 @@ export async function deletePayRunAction(id: string) {
 }
 
 // ---- Settings -------------------------------------------------------------
+
+// --- Documents --------------------------------------------------------------
+
+/**
+ * Upload and read, in one go.
+ *
+ * books:import rather than books:write — this is the same act as importing a
+ * statement, and it still writes nothing to the books. Every document lands as
+ * a proposal.
+ */
+export async function uploadDocumentsAction(formData: FormData) {
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+  if (files.length === 0) return { error: "Choose at least one file." };
+
+  const prepared: { name: string; type: string; bytes: Buffer }[] = [];
+  for (const file of files) {
+    prepared.push({
+      name: file.name,
+      type: file.type,
+      bytes: Buffer.from(await file.arrayBuffer()),
+    });
+  }
+
+  return withCapability("books:import", async () => {
+    const results: { id: string; fileName: string; ok: boolean; reason?: string }[] = [];
+    for (const file of prepared) {
+      const id = await saveDocument(file);
+      const read = await extractDocument(id);
+      results.push({
+        id,
+        fileName: file.name,
+        ok: read.ok,
+        ...(read.ok ? {} : { reason: read.reason }),
+      });
+    }
+    revalidatePath("/documents");
+    return { results };
+  });
+}
+
+export async function rereadDocumentAction(id: string) {
+  return withCapability("books:import", async () => {
+    const r = await extractDocument(id);
+    revalidatePath("/documents");
+    return r;
+  });
+}
+
+export async function confirmDocumentAsBillAction(
+  id: string,
+  input: {
+    vendorName: string;
+    number?: string;
+    issueDate: string;
+    dueDate?: string | null;
+    net: number;
+    vatTotal: number;
+    paidByTransactionId?: string | null;
+  },
+) {
+  return withCapability("books:write", async () => {
+    const result = await confirmAsBill(id, input);
+    revalidatePath("/documents");
+    revalidatePath("/vendors");
+    return result;
+  });
+}
+
+export async function attachDocumentToTransactionAction(id: string, transactionId: string) {
+  return withCapability("books:write", async () => {
+    await linkToTransaction(id, transactionId);
+    revalidatePath("/documents");
+    revalidatePath("/transactions");
+  });
+}
+
+export async function candidateTransactionsAction(id: string) {
+  return withCapability("books:read", async () => candidateTransactions(id));
+}
+
+export async function rejectDocumentAction(id: string) {
+  return withCapability("books:write", async () => {
+    await rejectDocument(id);
+    revalidatePath("/documents");
+  });
+}
+
+export async function deleteDocumentAction(id: string) {
+  return withCapability("books:write", async () => {
+    await deleteDocument(id);
+    revalidatePath("/documents");
+  });
+}
 
 // --- AI ---------------------------------------------------------------------
 
