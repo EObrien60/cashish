@@ -36,8 +36,8 @@ type Props = {
   people?: { id: string; name: string }[];
   /** Suppliers, for attributing a payment to one of them. */
   vendors?: { id: string; name: string }[];
-  /** Every account in the book, for the filter and the per-row label. */
-  accounts?: { id: string; name: string; currency: string }[];
+  /** Every account in the book, for the filter, the per-row label and the import target. */
+  accounts?: { id: string; name: string; currency: string; inferred?: boolean }[];
   /** What the server filtered by; these live in the URL, not in this component. */
   filters: {
     search: string;
@@ -85,6 +85,12 @@ export function TransactionsView({
   const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Which account the file about to be chosen is for. "" means "the file says",
+  // which is true of a card or current-account export and false of a savings
+  // one — that has no column naming the account at all.
+  const [importTarget, setImportTarget] = useState("");
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountKind, setNewAccountKind] = useState("savings");
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -151,6 +157,12 @@ export function TransactionsView({
     setSummary(null);
     const fd = new FormData();
     fd.append("file", file);
+    if (importTarget === "new") {
+      fd.append("newAccountName", newAccountName.trim());
+      fd.append("newAccountKind", newAccountKind);
+    } else if (importTarget) {
+      fd.append("accountId", importTarget);
+    }
     const result = await importStatement(fd);
     setSummary(result);
     setImporting(false);
@@ -260,11 +272,67 @@ export function TransactionsView({
           <div>
             <h2 className="font-semibold">Import bank statement</h2>
             <p className="text-sm text-ink-faint mt-0.5">
-              Upload a Revolut CSV, business or personal. Re-uploading overlapping
-              statements is safe — only new transactions are added, matched on the
-              statement&rsquo;s transaction ID where it has one and on the line itself
+              Upload a Revolut CSV — current account, card or savings. Re-uploading
+              overlapping statements is safe: only new transactions are added, matched on
+              the statement&rsquo;s transaction ID where it has one and on the line itself
               where it does not.
             </p>
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="block text-xs font-medium text-ink-soft mb-1">
+                  This statement is for
+                </span>
+                <select
+                  className="input w-auto"
+                  value={importTarget}
+                  onChange={(e) => setImportTarget(e.target.value)}
+                >
+                  <option value="">Whatever the file says</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {/* An account known only from the far side of a transfer
+                          is the one this statement is most likely FOR, so it
+                          says so rather than looking like any other choice. */}
+                      {a.inferred ? " — awaiting its statement" : ""}
+                    </option>
+                  ))}
+                  <option value="new">A new account…</option>
+                </select>
+              </label>
+              {importTarget === "new" && (
+                <>
+                  <label className="text-sm">
+                    <span className="block text-xs font-medium text-ink-soft mb-1">Name</span>
+                    <input
+                      className="input w-40"
+                      placeholder="Savings"
+                      value={newAccountName}
+                      onChange={(e) => setNewAccountName(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="block text-xs font-medium text-ink-soft mb-1">Type</span>
+                    <select
+                      className="input w-auto"
+                      value={newAccountKind}
+                      onChange={(e) => setNewAccountKind(e.target.value)}
+                    >
+                      <option value="current">Current account</option>
+                      <option value="savings">Savings</option>
+                      <option value="credit_card">Credit card</option>
+                      <option value="pocket">Pocket</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              <span className="text-xs text-ink-faint pb-2">
+                {importTarget === ""
+                  ? "A card or current-account export names its own account; a savings one does not."
+                  : "Rows whose file does not name an account will land here."}
+              </span>
+            </div>
           </div>
           <div>
             <input
@@ -276,7 +344,7 @@ export function TransactionsView({
             />
             <button
               className="btn-primary"
-              disabled={importing}
+              disabled={importing || (importTarget === "new" && !newAccountName.trim())}
               onClick={() => fileRef.current?.click()}
             >
               <IconUpload className="h-4 w-4" />

@@ -5,22 +5,29 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { moneyIn, fmtDate } from "@/lib/format";
 import { Card } from "./ui";
-import { assignUnassignedAction, updateAccountAction, recomputeAccountsAction } from "@/app/actions";
+import {
+  assignUnassignedAction,
+  updateAccountAction,
+  recomputeAccountsAction,
+  mergeAccountsAction,
+} from "@/app/actions";
 import type { AccountBalance } from "@/lib/accounts";
+import { ACCOUNT_KIND_LABELS, isLiability } from "@/lib/account-kinds";
 
-const KIND_LABELS: Record<string, string> = {
-  current: "Current",
-  savings: "Savings",
-  credit_card: "Credit card",
-  pocket: "Pocket",
-  other: "Other",
-};
-
-export function AccountsTable({ accounts }: { accounts: AccountBalance[] }) {
+export function AccountsTable({
+  accounts,
+  all,
+}: {
+  accounts: AccountBalance[];
+  /** Every account in the book — merge targets can be in another currency block. */
+  all?: AccountBalance[];
+}) {
   const router = useRouter();
   const [, start] = useTransition();
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [merging, setMerging] = useState<string | null>(null);
+  const candidates = all ?? accounts;
 
   function rename(id: string) {
     const next = name.trim();
@@ -83,7 +90,7 @@ export function AccountsTable({ accounts }: { accounts: AccountBalance[] }) {
                   </span>
                 )}
               </td>
-              <td className="px-4 py-2 text-ink-soft">{KIND_LABELS[a.kind] ?? a.kind}</td>
+              <td className="px-4 py-2 text-ink-soft">{ACCOUNT_KIND_LABELS[a.kind] ?? a.kind}</td>
               <td className="px-4 py-2 text-right tabular-nums">
                 {a.transactions > 0 ? (
                   <Link href={`/transactions?account=${a.id}`} className="text-brand underline">
@@ -96,11 +103,20 @@ export function AccountsTable({ accounts }: { accounts: AccountBalance[] }) {
               <td className="px-4 py-2 text-ink-soft">{fmtDate(a.lastActivity)}</td>
               <td
                 className={`px-4 py-2 text-right tabular-nums font-medium ${
-                  a.balance < 0 ? "text-money-out" : ""
+                  (isLiability(a.kind) ? a.balance < 0 : a.balance < 0) ? "text-money-out" : ""
                 }`}
               >
-                {moneyIn(a.balance, a.currency)}
-                {a.derivedFromTransfers !== 0 && a.transactions === 0 && (
+                {/* A card at -260 is 260 owed, and saying so is the difference
+                    between a number and an answer. */}
+                {isLiability(a.kind) && a.balance < 0
+                  ? `${moneyIn(-a.balance, a.currency)} owed`
+                  : moneyIn(a.balance, a.currency)}
+                {isLiability(a.kind) && a.inferred && a.balance > 0 && (
+                  <div className="text-[11px] font-normal text-ink-faint">
+                    paid in; the card&rsquo;s own statement is not imported
+                  </div>
+                )}
+                {a.derivedFromTransfers !== 0 && a.transactions === 0 && !isLiability(a.kind) && (
                   <div className="text-[11px] font-normal text-ink-faint">from transfers in</div>
                 )}
                 {a.unknownIncoming !== 0 && (
@@ -112,19 +128,56 @@ export function AccountsTable({ accounts }: { accounts: AccountBalance[] }) {
                   </div>
                 )}
               </td>
-              <td className="px-4 py-2 text-right">
-                <button
-                  type="button"
-                  className="text-xs text-ink-faint underline"
-                  onClick={() =>
-                    start(async () => {
-                      await updateAccountAction(a.id, { archived: !a.archived });
-                      router.refresh();
-                    })
-                  }
-                >
-                  {a.archived ? "Restore" : "Archive"}
-                </button>
+              <td className="px-4 py-2 text-right whitespace-nowrap">
+                {merging === a.id ? (
+                  <select
+                    autoFocus
+                    className="input w-44 text-xs"
+                    defaultValue=""
+                    onBlur={() => setMerging(null)}
+                    onChange={(e) => {
+                      const into = e.target.value;
+                      setMerging(null);
+                      if (!into) return;
+                      start(async () => {
+                        await mergeAccountsAction(a.id, into);
+                        router.refresh();
+                      });
+                    }}
+                  >
+                    <option value="">Merge into…</option>
+                    {candidates
+                      .filter((c) => c.id !== a.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="text-xs text-ink-faint underline"
+                      title="If this is the same account as another one under a different name"
+                      onClick={() => setMerging(a.id)}
+                    >
+                      Merge
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-3 text-xs text-ink-faint underline"
+                      onClick={() =>
+                        start(async () => {
+                          await updateAccountAction(a.id, { archived: !a.archived });
+                          router.refresh();
+                        })
+                      }
+                    >
+                      {a.archived ? "Restore" : "Archive"}
+                    </button>
+                  </>
+                )}
               </td>
             </tr>
           ))}

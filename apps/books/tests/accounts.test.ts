@@ -22,6 +22,8 @@ import {
   nameFromStatement,
   unassignedCount,
   assignUnassigned,
+  groupAccounts,
+  mergeAccounts,
 } from "../src/lib/accounts";
 import { detectTransfers, pairTransfers, unmarkTransfer } from "../src/lib/transfers";
 import { profitAndLoss } from "../src/lib/reports";
@@ -376,4 +378,140 @@ test("running the scan twice changes nothing the second time", async () => {
   const again = await asTenant(tenant, () => detectTransfers());
   assert.equal(again.detected, 0);
   assert.equal(again.accountsCreated.length, 0);
+});
+
+test("a savings statement parses: its own date format, its own amount column", () => {
+  // Revolut's savings export: a "Value, EUR" column instead of Amount, dates
+  // written "2 Sept 2026, 11:37:44", thousands separators, and nothing at all
+  // naming the account.
+  const csv = `Date,Description,"Value, EUR",Price per share,Quantity of shares
+"2 Sept 2026, 11:37:44",BUY EUR Class R IE000AZVL3K0,"20,560.92",,
+"6 Sept 2026, 01:42:43",Return PAID EUR Class R IE000AZVL3K0,1.4929,,
+"22 Jun 2026, 11:20:27",SELL EUR Class R IE000AZVL3K0,"-1,050",,
+`;
+  const parsed = parseStatementCsv(csv);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.rows.length, 3);
+  assert.equal(parsed.rows[0].bookedDate, "2026-09-02", "'Sept' is four letters and still a date");
+  assert.equal(parsed.rows[0].amount, 20560.92, "thousands separators are not decimal points");
+  assert.equal(parsed.rows[2].amount, -1050);
+  assert.equal(parsed.rows[1].currency, "EUR", "the currency is in the column header");
+});
+
+test("a date that cannot be read is reported, not silently made up", () => {
+  const csv = `Date,Description,"Value, EUR"
+"the day before yesterday",Interest,1.00
+`;
+  const parsed = parseStatementCsv(csv);
+  assert.equal(parsed.rows.length, 0);
+  assert.match(parsed.errors[0] ?? "", /could not read the date/);
+});
+
+test("a statement with no account column lands where it is told", async () => {
+  await reset();
+  const csv = `Date,Description,"Value, EUR"
+"2 Sept 2026, 11:37:44",BUY EUR Class R,"1,000.00"
+"6 Sept 2026, 01:42:43",Return PAID EUR Class R,1.49
+`;
+  const parsed = parseStatementCsv(csv);
+  const summary = await asTenant(tenant, () =>
+    importTransactions(parsed.rows, parsed.errors, { fallbackAccount: "Flexible savings" }),
+  );
+
+  assert.equal(summary.inserted, 2);
+  assert.deepEqual(
+    (summary.accounts ?? []).map((a) => a.name),
+    ["Flexible savings"],
+  );
+
+  const balances = await asTenant(tenant, () => accountBalances());
+  assert.equal(balances.find((b) => b.name === "Flexible savings")?.balance, 1001.49);
+});
+
+test("held, owed and net are three different questions", async () => {
+  await reset();
+  await asTenant(tenant, async () => {
+    const current = await ensureAccount({ name: "Current", kind: "current" });
+    const savings = await ensureAccount({ name: "Savings", kind: "savings" });
+    const card = await ensureAccount({ name: "Credit", kind: "credit_card" });
+    await db.insert(schema.transactions).values([
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-01", amount: 2000, description: "Salary", accountId: current.id, importBatch: "t" },
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-02", amount: 500, description: "Interest", accountId: savings.id, importBatch: "t" },
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-03", amount: -300, description: "Argos", accountId: card.id, importBatch: "t" },
+    ]);
+  });
+
+  const [group] = groupAccounts(await asTenant(tenant, () => accountBalances()));
+  assert.equal(group.held, 2500, "a card balance is not money you hold");
+  assert.equal(group.owed, 300, "it is money you owe, stated positively");
+  assert.equal(group.net, 2200);
+  assert.equal(group.saved, 500, "and some of what you hold is set aside");
+  assert.equal(group.assets.length, 2);
+  assert.equal(group.liabilities.length, 1);
+});
+
+test("currencies are grouped, never added together", async () => {
+  await asTenant(tenant, async () => {
+    const gbp = await ensureAccount({ name: "Main · GBP", kind: "current" });
+    await db.insert(schema.transactions).values({
+      id: uid(), tenantId: tenant, bookedDate: "2026-08-04", amount: 100,
+      description: "Sterling in", accountId: gbp.id, currency: "GBP", importBatch: "t",
+    });
+  });
+
+  const groups = groupAccounts(await asTenant(tenant, () => accountBalances()));
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((g) => g.currency).sort(), ["EUR", "GBP"]);
+  assert.equal(groups.find((g) => g.currency === "GBP")?.held, 100);
+  assert.equal(groups.find((g) => g.currency === "EUR")?.held, 2500);
+});
+
+test("two accounts that are the same account can be folded into one", async () => {
+  await reset();
+
+  // Exactly the mistake: a transfer says "To Savings" so Savings is created,
+  // then the statement is imported under the name Revolut gives it.
+  const current = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+TRANSFER,Current,2026-09-02 11:37:44,2026-09-02 11:37:44,To Savings,-1000.00,0.00,EUR,COMPLETED,4000.00
+`;
+  await asTenant(tenant, () => importTransactions(parseStatementCsv(current).rows, []));
+
+  const savings = `Date,Description,"Value, EUR"
+"2 Sept 2026, 11:37:44",BUY EUR Class R,"1,000.00"
+"6 Sept 2026, 01:42:43",Return PAID EUR Class R,2.50
+`;
+  await asTenant(tenant, () =>
+    importTransactions(parseStatementCsv(savings).rows, [], { fallbackAccount: "Flexible savings" }),
+  );
+
+  const before = groupAccounts(await asTenant(tenant, () => accountBalances()))[0];
+  assert.equal(before.saved, 2002.5, "the same €1,000 is counted twice, in two accounts");
+
+  const all = await asTenant(tenant, () => listAccounts());
+  const inferred = all.find((a) => a.name === "Savings")!;
+  const real = all.find((a) => a.name === "Flexible savings")!;
+  // What mergeAccountsAction does: fold, then try pairing again, because the
+  // far side of that transfer is now reachable.
+  const result = await asTenant(tenant, () => mergeAccounts(inferred.id, real.id));
+  await asTenant(tenant, () => pairTransfers());
+
+  assert.equal(result.moved, 0, "the inferred account had no transactions of its own");
+  assert.equal(result.repointed, 1, "but a transfer pointed at it");
+
+  const after = groupAccounts(await asTenant(tenant, () => accountBalances()))[0];
+  assert.equal(after.saved, 1002.5, "counted once: the €1,000 that moved, plus €2.50 interest");
+  assert.equal(
+    (await asTenant(tenant, () => listAccounts())).length,
+    2,
+    "and the duplicate is gone, not left behind empty",
+  );
+});
+
+test("merging keeps the transfer pointing somewhere real", async () => {
+  const rows = await asTenant(tenant, () => listTransactions({ excluded: "only" }));
+  const transfer = rows.find((r) => r.description === "To Savings");
+  assert.ok(transfer);
+  const accounts = await asTenant(tenant, () => listAccounts());
+  const target = accounts.find((a) => a.id === transfer.transferAccountId);
+  assert.equal(target?.name, "Flexible savings");
 });

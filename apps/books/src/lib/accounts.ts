@@ -3,6 +3,7 @@ import { db, first, schema, tenantId } from "@cashish/core/db";
 import type { AccountKind } from "@cashish/core/db";
 import { round2 } from "./format";
 import { uid } from "./id";
+import { isLiability } from "./account-kinds";
 
 const { accounts, transactions } = schema;
 
@@ -256,4 +257,109 @@ export async function assignUnassigned(accountId: string): Promise<number> {
     .where(and(eq(transactions.tenantId, tenantId()), sql`${transactions.accountId} is null`))
     .returning({ id: transactions.id });
   return updated.length;
+}
+
+
+// ---------------------------------------------------------------------------
+// What a kind MEANS.
+//
+// A credit card is not an account with a negative balance in it; it is money
+// you owe. Adding it to a current account balance to get "total held" produces
+// a number that is neither what you have nor what you are worth. So accounts
+// are grouped by what they are, and the two groups are shown apart before they
+// are netted.
+// ---------------------------------------------------------------------------
+
+export { isLiability } from "./account-kinds";
+
+export type AccountGroup = {
+  currency: string;
+  /** Current accounts, savings, pockets — money you have. */
+  assets: AccountBalance[];
+  /** Credit cards — money you owe. */
+  liabilities: AccountBalance[];
+  held: number;
+  owed: number;
+  /** Held less owed. The only figure that answers "how am I doing". */
+  net: number;
+  /** Of `held`, the part that is set aside rather than spendable. */
+  saved: number;
+};
+
+/**
+ * Accounts grouped by currency, then by what they are.
+ *
+ * Currencies are never added together: there is no exchange rate in the books
+ * and inventing one would put a made-up number at the top of the page.
+ */
+export function groupAccounts(balances: AccountBalance[]): AccountGroup[] {
+  const byCurrency = new Map<string, AccountBalance[]>();
+  for (const a of balances) {
+    if (a.archived) continue;
+    byCurrency.set(a.currency, [...(byCurrency.get(a.currency) ?? []), a]);
+  }
+
+  return [...byCurrency.entries()]
+    .map(([currency, list]) => {
+      const assets = list.filter((a) => !isLiability(a.kind));
+      const liabilities = list.filter((a) => isLiability(a.kind));
+      const held = round2(assets.reduce((acc, a) => acc + a.balance, 0));
+      // A card at -260 is 260 owed. Stored as the bank states it, shown as what
+      // it means.
+      const owed = round2(liabilities.reduce((acc, a) => acc + Math.min(0, a.balance), 0) * -1);
+      const saved = round2(
+        assets.filter((a) => a.kind === "savings").reduce((acc, a) => acc + a.balance, 0),
+      );
+      return { currency, assets, liabilities, held, owed, net: round2(held - owed), saved };
+    })
+    // The currency you hold most of, first.
+    .sort((a, b) => b.held - a.held);
+}
+
+
+/**
+ * Folds one account into another.
+ *
+ * The mistake this exists for is easy and, without it, permanent: a transfer
+ * says "To Savings" so an account called Savings is created, and then the
+ * savings statement is imported under the name Revolut actually gives it —
+ * "Flexible savings". Two accounts, the same money, and a total that is
+ * plainly wrong.
+ *
+ * Everything pointing at the source is repointed rather than copied: the
+ * transactions that sat on it, and the transfers that pointed AT it from other
+ * accounts. The source is then deleted, because leaving an empty duplicate
+ * behind is how the list becomes untrustworthy.
+ */
+export async function mergeAccounts(
+  fromId: string,
+  intoId: string,
+): Promise<{ moved: number; repointed: number }> {
+  const tid = tenantId();
+  if (fromId === intoId) return { moved: 0, repointed: 0 };
+
+  const [source, target] = await Promise.all([getAccount(fromId), getAccount(intoId)]);
+  if (!source || !target) throw new Error("Both accounts must exist in this book.");
+
+  return db.transaction(async (trx) => {
+    const moved = await trx
+      .update(transactions)
+      .set({ accountId: intoId })
+      .where(and(eq(transactions.tenantId, tid), eq(transactions.accountId, fromId)))
+      .returning({ id: transactions.id });
+
+    const repointed = await trx
+      .update(transactions)
+      .set({ transferAccountId: intoId })
+      .where(and(eq(transactions.tenantId, tid), eq(transactions.transferAccountId, fromId)))
+      .returning({ id: transactions.id });
+
+    // A real statement absorbing a guess makes the survivor real.
+    if (target.inferred && !source.inferred) {
+      await trx.update(accounts).set({ inferred: false }).where(eq(accounts.id, intoId));
+    }
+
+    await trx.delete(accounts).where(and(eq(accounts.tenantId, tid), eq(accounts.id, fromId)));
+    return { moved: moved.length, repointed: repointed.length };
+  });
 }

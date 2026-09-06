@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema, tenantId } from "@cashish/core/db";
 import { ensureAccount, listAccounts } from "./accounts";
 import { round2 } from "./format";
@@ -193,52 +193,101 @@ export async function detectTransfers(options: { batch?: string } = {}): Promise
 export async function pairTransfers(windowDays = 3): Promise<number> {
   const tid = tenantId();
 
-  const candidates = await db
+  // One side is a line we recognised as a transfer and know the destination of.
+  // The other is whatever the receiving statement happens to call it — and it
+  // is usually NOT recognisable on its own: a savings statement records an
+  // arriving €1,000 as "BUY EUR Class R", which names no account and looks like
+  // any other credit. Pairing therefore matches a known transfer against
+  // ordinary rows on the account it points at, rather than against other
+  // recognised transfers, which is what an earlier version did and why a
+  // deposit could be counted twice.
+  const known = await db
     .select()
     .from(transactions)
     .where(
       and(
         eq(transactions.tenantId, tid),
         isNull(transactions.transferPeerId),
-        ne(transactions.excluded, false),
+        sql`${transactions.transferAccountId} is not null`,
       ),
     );
+  if (known.length === 0) return 0;
 
-  const outs = candidates.filter((t) => t.amount < 0);
-  const ins = candidates.filter((t) => t.amount > 0);
-  const takenIn = new Set<string>();
-  let paired = 0;
+  const targets = [...new Set(known.map((t) => t.transferAccountId!))];
+  const others = await db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.tenantId, tid),
+        isNull(transactions.transferPeerId),
+        inArray(transactions.accountId, targets),
+      ),
+    );
 
   const daysApart = (a: string, b: string) =>
     Math.abs(
       (new Date(a + "T00:00:00Z").getTime() - new Date(b + "T00:00:00Z").getTime()) / 86_400_000,
     );
 
-  for (const out of outs) {
-    const match = ins.find(
-      (i) =>
-        !takenIn.has(i.id) &&
-        round2(i.amount) === round2(-out.amount) &&
-        i.accountId !== out.accountId &&
-        daysApart(i.bookedDate, out.bookedDate) <= windowDays,
+  const taken = new Set<string>();
+  let paired = 0;
+
+  for (const t of known) {
+    // When BOTH sides were recognised — "To Credit" here, "From Current"
+    // there — each finds the other, and pairing them twice would report two
+    // movements where there was one.
+    if (taken.has(t.id)) continue;
+    const match = others.find(
+      (o) =>
+        !taken.has(o.id) &&
+        o.id !== t.id &&
+        o.accountId === t.transferAccountId &&
+        o.accountId !== t.accountId &&
+        round2(o.amount) === round2(-t.amount) &&
+        daysApart(o.bookedDate, t.bookedDate) <= windowDays,
     );
     if (!match) continue;
 
-    takenIn.add(match.id);
+    taken.add(match.id);
+    taken.add(t.id);
     paired += 1;
     await db.transaction(async (trx) => {
       await trx
         .update(transactions)
-        .set({ transferPeerId: match.id, transferAccountId: match.accountId ?? out.transferAccountId })
-        .where(and(eq(transactions.tenantId, tid), eq(transactions.id, out.id)));
+        .set({ transferPeerId: match.id })
+        .where(and(eq(transactions.tenantId, tid), eq(transactions.id, t.id)));
+      // The receiving line is the same movement, so it leaves the books too —
+      // otherwise money arriving from your own account reads as income.
       await trx
         .update(transactions)
-        .set({ transferPeerId: out.id, transferAccountId: out.accountId ?? match.transferAccountId })
+        .set({
+          transferPeerId: t.id,
+          transferAccountId: t.accountId,
+          excluded: true,
+          excludedReason: `Transfer ${match.amount < 0 ? "to" : "from"} ${
+            (await getAccountName(trx, tid, t.accountId)) ?? "another account"
+          }`,
+        })
         .where(and(eq(transactions.tenantId, tid), eq(transactions.id, match.id)));
     });
   }
 
   return paired;
+}
+
+async function getAccountName(
+  trx: { select: typeof db.select },
+  tid: string,
+  accountId: string | null,
+): Promise<string | null> {
+  if (!accountId) return null;
+  const [row] = await trx
+    .select({ name: accounts.name })
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, tid), eq(accounts.id, accountId)))
+    .limit(1);
+  return row?.name ?? null;
 }
 
 /** Undoes a detection: back into the books, off the transfer. */
