@@ -154,6 +154,20 @@ and anything added later import `@cashish/core/db`; no app declares a table. One
 database has one schema and one migration journal, and a schema copied into an
 app is a schema that drifts on the first migration somebody forgets to mirror.
 
+**`vercel.json` takes no comments.** Vercel validates it with
+`additionalProperties: false`, so a `"//"` key — legal JSON, and a common way to
+annotate it — fails the deployment with "should NOT have additional property",
+*after* the merge and after CI has gone green. Explanations about the build go
+here instead; `apps/books/tests/vercel-config.test.ts` fails if one creeps back.
+
+**Only one thing migrates at a time, and it needs a direct connection.** Both
+Vercel projects build from this repository, so one merge starts two builds and
+both run the migrator. `pg_advisory_lock` is session-scoped and Neon's *pooled*
+endpoint hands each statement a different backend, so the lock held nothing and
+two concurrent `CREATE TABLE`s collided on the Postgres catalog. The migrator
+now prefers `DATABASE_URL_UNPOOLED`, and each project's `ignoreCommand` keeps it
+from building for changes it does not depend on.
+
 **Migrations only.** No DDL at request time. Edit
 `packages/core/src/db/schema.ts`, then `npm run db:generate`, and commit the
 generated SQL. The migrator resolves its folder against its own module rather

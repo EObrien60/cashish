@@ -1,8 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "This project and `cashish` build from the same repository, so one merge starts two builds. Both run the migrator, and on 2026-09-06 they raced: one applied 0009 and the other died on the Postgres catalog. The migrator now takes a direct (unpooled) connection so its advisory lock actually holds, and ignoreCommand keeps this project from building at all for a change it does not depend on.",
   "framework": "nextjs",
   "buildCommand": "npm run db:migrate -w @cashish/core && next build",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/admin packages/core package.json package-lock.json",
-  "regions": ["fra1"]
+  "regions": [
+    "fra1"
+  ]
 }
