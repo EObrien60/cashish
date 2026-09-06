@@ -1,7 +1,13 @@
 "use server";
 
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
-import { updateAccount, assignUnassigned, ensureAccount } from "@/lib/accounts";
+import {
+  updateAccount,
+  assignUnassigned,
+  ensureAccount,
+  getAccount,
+  mergeAccounts,
+} from "@/lib/accounts";
 import { detectTransfers, pairTransfers, markTransfer, unmarkTransfer } from "@/lib/transfers";
 import type { AccountKind } from "@cashish/core/db";
 import { revalidatePath } from "next/cache";
@@ -99,10 +105,48 @@ export async function importStatement(formData: FormData): Promise<ImportSummary
     };
   }
   const text = await file.text();
+  // Which account this statement is for.
+  //
+  // Most Revolut exports name it in the file, but the savings one does not: it
+  // has a Date, a Description and a Value, and nothing that says which account
+  // produced it. Without being told, every such statement would land on
+  // whatever the fallback is — silently, and wrongly.
+  const accountId = String(formData.get("accountId") ?? "").trim();
+  const newAccountName = String(formData.get("newAccountName") ?? "").trim();
+  const newAccountKind = String(formData.get("newAccountKind") ?? "").trim();
+
   return withCapability("books:import", async () => {
+    let fallbackAccount: string | undefined;
+
+    if (newAccountName) {
+      await ensureAccount({
+        name: newAccountName,
+        kind: (newAccountKind || undefined) as AccountKind | undefined,
+        inferred: false,
+      });
+      fallbackAccount = newAccountName;
+    } else if (accountId) {
+      const chosen = await getAccount(accountId);
+      if (!chosen) {
+        return {
+          batch: "",
+          parsed: 0,
+          inserted: 0,
+          duplicates: 0,
+          autoCategorized: 0,
+          errors: ["That account no longer exists."],
+        };
+      }
+      // Choosing an existing account is also a statement that it is real, not
+      // a guess made from the far side of somebody else's transfer.
+      await ensureAccount({ name: chosen.name, inferred: false });
+      fallbackAccount = chosen.name;
+    }
+
     const { rows, errors } = parseStatementCsv(text);
-    const summary = await importTransactions(rows, errors);
+    const summary = await importTransactions(rows, errors, { fallbackAccount });
     revalidatePath("/transactions");
+    revalidatePath("/accounts");
     revalidatePath("/");
     return summary;
   });
@@ -558,6 +602,17 @@ export async function updateAccountAction(
     await updateAccount(id, patch);
     revalidatePath("/accounts");
     revalidatePath("/transactions");
+  });
+}
+
+export async function mergeAccountsAction(fromId: string, intoId: string) {
+  return withCapability("books:write", async () => {
+    const result = await mergeAccounts(fromId, intoId);
+    // The far side of a transfer may now be reachable, so try pairing again.
+    await pairTransfers();
+    revalidatePath("/accounts");
+    revalidatePath("/transactions");
+    return result;
   });
 }
 

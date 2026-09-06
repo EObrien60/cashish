@@ -80,7 +80,12 @@ export default async function TransactionsPage({
           receiptCounts={receipts}
           people={people.map((p) => ({ id: p.id, name: fullName(p) }))}
           vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency }))}
+          accounts={accounts.map((a) => ({
+            id: a.id,
+            name: a.name,
+            currency: a.currency,
+            inferred: a.inferred,
+          }))}
           filters={{ search, direction: direction ?? "all", uncategorized, tab, accountId: accountId ?? "" }}
           summary={summary}
           counts={counts}
