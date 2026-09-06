@@ -11,8 +11,19 @@
  * features that business gets — not how many businesses you may own.
  */
 
-export const PLAN_CODES = ["sole", "company", "practice"] as const;
+export const PLAN_CODES = ["personal", "sole", "company", "practice"] as const;
 export type PlanCode = (typeof PLAN_CODES)[number];
+
+/**
+ * Personal books are priced on their own, and shown on their own.
+ *
+ * Not a cheaper tier of the business plans: a household is a different job, not
+ * a smaller company. Listing it as the first of four columns invites the reader
+ * to compare a grocery budget against payroll, which flatters neither.
+ */
+export const PERSONAL_PLAN_CODE = "personal" as const;
+export const BUSINESS_PLAN_CODES = ["sole", "company", "practice"] as const;
+export const isPersonalPlan = (code: string) => code === PERSONAL_PLAN_CODE;
 
 export const SUBSCRIPTION_STATUSES = [
   "trialing",
@@ -53,6 +64,18 @@ export type SeedPlan = {
 };
 
 export const SEED_PLANS: SeedPlan[] = [
+  {
+    // One person, one household, no trading half. The price is the one number
+    // here that is a guess rather than a decision — it is in the table so it can
+    // be changed in the admin console without a deploy.
+    code: "personal",
+    name: "Personal",
+    priceCents: 400,
+    cadence: "month",
+    maxUsers: 2,
+    features: { payroll: false, receipts: true, mcp: true, oauth: false },
+    sortOrder: 10,
+  },
   {
     code: "sole",
     name: "Sole trader",

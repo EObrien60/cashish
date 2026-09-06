@@ -67,8 +67,9 @@ test("the plans table is the source of the numbers", async () => {
       ["sole", 900, 1],
       ["company", 2900, null],
       ["practice", null, null],
+      ["personal", 400, 2],
     ],
-    "seeded from SEED_PLANS by the 0006 migration",
+    "seeded from SEED_PLANS by the 0006 and 0011 migrations",
   );
 });
 
