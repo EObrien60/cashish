@@ -3,6 +3,7 @@ import { withTenant } from "@/lib/request-context";
 import { profitAndLoss, monthlyCashflow } from "@/lib/reports";
 import { marginReport, spendReport, revenueReport, trendReport } from "@/lib/analysis";
 import { resolvePeriod } from "@/lib/period";
+import { bookKind } from "@/lib/lookups";
 import { money, fmtDate } from "@/lib/format";
 import { Card, PageHeader } from "@/components/ui";
 import { PeriodTabs } from "@/components/PeriodTabs";
@@ -14,6 +15,7 @@ import {
   BasisNote,
   UncategorisedWarning,
 } from "@/components/ReportBits";
+import { HouseholdReport } from "@/components/HouseholdReport";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,29 @@ export default async function ReportsPage({
   return withTenant(async () => {
     const sp = await searchParams;
     const period = resolvePeriod(sp.period);
+
+    // A household has no revenue, sells nothing and has no margin. Rendering the
+    // business report with the words changed would invite someone to read the
+    // weekly shop as a cost of sales, so the personal book gets its own.
+    if ((await bookKind()) === "personal") {
+      const [pnl, monthly, spend] = await Promise.all([
+        profitAndLoss(period.from, period.to),
+        monthlyCashflow(period.from, period.to),
+        spendReport(period.from, period.to),
+      ]);
+      return (
+        <div>
+          <PageHeader
+            title="Reports"
+            subtitle="What came in, what went out, and what you kept."
+          />
+          <div className="mb-6">
+            <PeriodTabs active={period.key} basePath="/reports" />
+          </div>
+          <HouseholdReport pnl={pnl} monthly={monthly} spend={spend} period={period} />
+        </div>
+      );
+    }
 
     const [pnl, monthly, margins, spend, revenue, trend] = await Promise.all([
       profitAndLoss(period.from, period.to),

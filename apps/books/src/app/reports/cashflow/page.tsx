@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { withTenant } from "@/lib/request-context";
+import { bookKind } from "@/lib/lookups";
 import { buildCashflowForecast, defaultWindow, type ForecastRow } from "@/lib/cashflow";
 import { money, todayISO, fmtDate } from "@/lib/format";
 import { Card, PageHeader } from "@/components/ui";
@@ -54,6 +56,12 @@ export default async function CashflowPage({
   searchParams: Promise<{ from?: string; to?: string; lookback?: string }>;
 }) {
   return withTenant(async () => {
+    // Hidden in the nav for a personal book, so reaching this is a typed URL or
+    // an old bookmark. Redirect rather than 404: the forecast projects open
+    // invoices and recurring invoice templates forward, and a household has
+    // neither — the page would render an empty sheet and look broken.
+    if ((await bookKind()) === "personal") redirect("/reports");
+
     const sp = await searchParams;
     const fallback = defaultWindow(todayISO());
     const from = sp.from || fallback.from;

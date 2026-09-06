@@ -14,6 +14,24 @@ const { categories, vatRates, products, settings, transactions, rpns } = schema;
 // once, here.
 // ---------------------------------------------------------------------------
 
+/**
+ * Which kind of book this is: "business" or "personal".
+ *
+ * Pages need it to decide which half of the app to show, and the rule in this
+ * repo is that pages do not query the database themselves — so it lives here
+ * with the other reference reads rather than being re-selected in each route.
+ * Defaults to business, which is what every book created before the column
+ * existed is.
+ */
+export async function bookKind(): Promise<"business" | "personal"> {
+  const [row] = await db
+    .select({ kind: schema.tenants.kind })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId()))
+    .limit(1);
+  return row?.kind === "personal" ? "personal" : "business";
+}
+
 export async function listCategories() {
   return db
     .select()
