@@ -165,8 +165,15 @@ Vercel projects build from this repository, so one merge starts two builds and
 both run the migrator. `pg_advisory_lock` is session-scoped and Neon's *pooled*
 endpoint hands each statement a different backend, so the lock held nothing and
 two concurrent `CREATE TABLE`s collided on the Postgres catalog. The migrator
-now prefers `DATABASE_URL_UNPOOLED`, and each project's `ignoreCommand` keeps it
-from building for changes it does not depend on.
+prefers `DATABASE_URL_UNPOOLED` for that reason; a direct connection is what
+makes the lock mean anything.
+
+**Do not add an `ignoreCommand`.** It was tried, to stop each project building
+for the other's changes, and it silently disabled deployment altogether: Vercel
+runs it from the project's *Root Directory*, so `git diff HEAD^ HEAD --
+apps/books` run from inside `apps/books` matches nothing, exits 0, and every
+build is skipped and reported as "Canceled". Two builds per merge is a cost
+worth paying over a pipeline that stops without saying so.
 
 **Migrations only.** No DDL at request time. Edit
 `packages/core/src/db/schema.ts`, then `npm run db:generate`, and commit the

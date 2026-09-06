@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "buildCommand": "npm run db:migrate -w @cashish/core && next build",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/admin packages/core package.json package-lock.json",
   "regions": [
     "fra1"
   ]
