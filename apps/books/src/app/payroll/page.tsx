@@ -36,7 +36,7 @@ export default async function PayrollPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Link href="/payroll/employees">
             <StatCard label="Employees" value={activeCount} sub={`${employees.length} total · manage →`} tone="brand" />
           </Link>
