@@ -27,6 +27,10 @@ export type TenantRow = {
   id: string;
   slug: string;
   name: string;
+  /** "business" | "personal" — which half of the app this book gets. */
+  kind: string;
+  region: string;
+  currency: string;
   createdAt: string;
   memberCount: number;
   transactionCount: number;
@@ -43,7 +47,10 @@ export type TenantRow = {
  * transactions and invoices multiplies the rows and then needs distinct counts
  * to undo the damage, which is both slower and easy to get subtly wrong.
  */
-export async function listTenants(search?: string): Promise<TenantRow[]> {
+export async function listTenants(
+  search?: string,
+  kind?: string,
+): Promise<TenantRow[]> {
   const term = search?.trim().toLowerCase();
 
   const rows = await db
@@ -51,6 +58,9 @@ export async function listTenants(search?: string): Promise<TenantRow[]> {
       id: tenants.id,
       slug: tenants.slug,
       name: tenants.name,
+      kind: tenants.kind,
+      region: tenants.region,
+      currency: tenants.currency,
       createdAt: tenants.createdAt,
       memberCount: sql<number>`(select count(*)::int from ${memberships} m where m.tenant_id = ${tenants.id})`,
       transactionCount: sql<number>`(select count(*)::int from ${transactions} t where t.tenant_id = ${tenants.id})`,
@@ -66,13 +76,34 @@ export async function listTenants(search?: string): Promise<TenantRow[]> {
     .leftJoin(subscriptions, eq(subscriptions.tenantId, tenants.id))
     .orderBy(desc(tenants.createdAt));
 
-  if (!term) return rows;
-  return rows.filter(
+  const ofKind =
+    kind === "business" || kind === "personal"
+      ? rows.filter((row) => row.kind === kind)
+      : rows;
+
+  if (!term) return ofKind;
+  return ofKind.filter(
     (row) =>
       row.slug.toLowerCase().includes(term) ||
       row.name.toLowerCase().includes(term) ||
       row.id === term,
   );
+}
+
+/**
+ * How the deployment splits between businesses and households.
+ *
+ * A support question starts with "what kind of book is this?" — a personal one
+ * has no invoices, no VAT and no payroll, so a zero in those columns is normal
+ * rather than a sign something is wrong.
+ */
+export async function tenantKindCounts(): Promise<{ business: number; personal: number }> {
+  const rows = await db
+    .select({ kind: tenants.kind, n: sql<number>`count(*)::int` })
+    .from(tenants)
+    .groupBy(tenants.kind);
+  const of = (k: string) => rows.find((r) => r.kind === k)?.n ?? 0;
+  return { business: of("business"), personal: of("personal") };
 }
 
 export type TenantMember = {
@@ -85,7 +116,15 @@ export type TenantMember = {
 };
 
 export type TenantDetail = {
-  tenant: { id: string; slug: string; name: string; createdAt: string };
+  tenant: {
+    id: string;
+    slug: string;
+    name: string;
+    kind: string;
+    region: string;
+    currency: string;
+    createdAt: string;
+  };
   settings: { businessName: string; vatNumber: string | null; vatBasis: string; invoicePrefix: string } | null;
   members: TenantMember[];
   keys: { id: string; name: string; prefix: string; role: string; lastUsedAt: string | null; revokedAt: string | null }[];
@@ -162,7 +201,15 @@ export async function getTenant(id: string): Promise<TenantDetail | null> {
     .limit(1);
 
   return {
-    tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, createdAt: tenant.createdAt },
+    tenant: {
+      id: tenant.id,
+      slug: tenant.slug,
+      name: tenant.name,
+      kind: tenant.kind,
+      region: tenant.region,
+      currency: tenant.currency,
+      createdAt: tenant.createdAt,
+    },
     settings: settingsRow
       ? {
           businessName: settingsRow.businessName,
@@ -186,6 +233,7 @@ export async function tenantFootprint(id: string) {
   return {
     slug: detail.tenant.slug,
     name: detail.tenant.name,
+    kind: detail.tenant.kind,
     createdAt: detail.tenant.createdAt,
     ...detail.counts,
   };

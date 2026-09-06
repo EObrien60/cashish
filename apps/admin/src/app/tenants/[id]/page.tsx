@@ -29,16 +29,29 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       </div>
       <PageHeader
         title={detail.tenant.name}
-        subtitle={`${detail.tenant.slug} · created ${when(detail.tenant.createdAt)}`}
+        subtitle={`${detail.tenant.slug} · ${
+          detail.tenant.kind === "personal" ? "personal book" : "business"
+        } · ${detail.tenant.region} · ${detail.tenant.currency} · created ${when(
+          detail.tenant.createdAt,
+        )}`}
       />
 
+      {/* A personal book has no invoices and no customers by design, so showing
+          two zeroes beside them reads as missing data rather than as the answer.
+          The tiles it cannot have are simply not offered. */}
       <div className="grid grid-cols-4 gap-3 mb-6">
-        {[
-          ["Members", detail.counts.members],
-          ["Transactions", detail.counts.transactions],
-          ["Invoices", detail.counts.invoices],
-          ["Customers", detail.counts.customers],
-        ].map(([label, value]) => (
+        {(detail.tenant.kind === "personal"
+          ? ([
+              ["Members", detail.counts.members],
+              ["Transactions", detail.counts.transactions],
+            ] as [string, number][])
+          : ([
+              ["Members", detail.counts.members],
+              ["Transactions", detail.counts.transactions],
+              ["Invoices", detail.counts.invoices],
+              ["Customers", detail.counts.customers],
+            ] as [string, number][])
+        ).map(([label, value]) => (
           <div key={label as string} className="adm-card p-3">
             <div className="text-[11px] uppercase tracking-wide text-ink-faint">{label}</div>
             <div className="text-2xl font-semibold tnum mt-1">{value as number}</div>
