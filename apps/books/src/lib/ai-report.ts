@@ -69,6 +69,10 @@ Never quote a field name from the fact sheet. Write "€130,434 of spending has
 no category yet", not "uncategorisedOut was €130,434.15". The reader has never
 seen the data structure and should not learn it from you.
 
+The recurring costs are the most useful thing here for someone looking at their
+own money: what is already spoken for before the month starts, against what is
+left. Say what that total is and what it leaves.
+
 If the books look untidy — a lot uncategorised, an account with no statement, a
 cost that has jumped — say so directly in watchOut. That is more useful than
 praise.
@@ -95,8 +99,11 @@ function factsForModel(facts: FactSheet) {
       "number of transactions with no category": facts.totals.uncategorisedCount,
     },
     months: facts.months,
+    "months in the period": facts.monthsInPeriod,
     categories: facts.categories.slice(0, 15),
     topMerchants: facts.merchants.slice(0, 20),
+    "costs that recur every month": facts.commitments.slice(0, 15),
+    "total committed per month": facts.commitmentsMonthly,
     accounts: facts.accounts,
     position: facts.position,
     availableChartSeries: CHART_SERIES,

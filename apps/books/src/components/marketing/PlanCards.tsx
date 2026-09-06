@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { PLAN_COPY, BILLING_LIVE, seatLine } from "@/lib/marketing";
-import { formatPrice, parseFeatures } from "@cashish/core/plans";
+import {
+  formatPrice,
+  parseFeatures,
+  BUSINESS_PLAN_CODES,
+  PERSONAL_PLAN_CODE,
+} from "@cashish/core/plans";
 import { publicPlans } from "@/lib/lookups";
 
 /**
@@ -9,7 +14,13 @@ import { publicPlans } from "@/lib/lookups";
  * to promise a limit that the enforcement in limits.ts does not apply.
  */
 export async function PlanCards({ compact = false }: { compact?: boolean }) {
-  const rows = await publicPlans();
+  const all = await publicPlans();
+  // The business tiers only. Personal is rendered by PersonalPlanCard, apart
+  // from these, so nobody is invited to read a grocery budget as a fourth tier
+  // of a company plan.
+  const rows = all.filter((row) =>
+    (BUSINESS_PLAN_CODES as readonly string[]).includes(row.code),
+  );
   const plans = rows.map((row, index) => {
     const copy = PLAN_COPY.find((c) => c.code === row.code);
     return {
@@ -111,6 +122,68 @@ export async function PlanCards({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The personal plan, on its own.
+ *
+ * Wide rather than a column, because it is not competing with the business
+ * tiers — it is the other product. Reads from the same `plans` table, so the
+ * price here is the price the admin console sets and nothing is hardcoded.
+ */
+export async function PersonalPlanCard() {
+  const rows = await publicPlans();
+  const row = rows.find((r) => r.code === PERSONAL_PLAN_CODE);
+  if (!row) return null;
+  const copy = PLAN_COPY.find((c) => c.code === PERSONAL_PLAN_CODE);
+  const price = row.priceCents === null ? null : formatPrice(row.priceCents);
+
+  return (
+    <div className="mk-plan mk-rise !flex-row flex-wrap items-start gap-x-12 gap-y-6 sm:p-8">
+      <div className="min-w-[240px] flex-1">
+        <div className="mk-kicker">For yourself</div>
+        <div className="mk-display mt-3 text-2xl">{row.name}</div>
+        <div className="mt-3 flex items-baseline gap-1.5">
+          {price === null ? (
+            <span className="mk-display text-3xl">Free</span>
+          ) : (
+            <>
+              <span className="mk-figure mk-figure-lg text-4xl font-semibold">{price}</span>
+              <span className="text-xs text-[color:var(--ink-faint)]">
+                per book, per {row.cadence}
+              </span>
+            </>
+          )}
+        </div>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-[color:var(--ink-soft)]">
+          {copy?.pitch}
+        </p>
+        <p className="mt-3 text-xs text-[color:var(--ink-faint)]">
+          {row.maxUsers === null
+            ? "Everyone in the household."
+            : row.maxUsers === 1
+              ? "One person."
+              : `Up to ${row.maxUsers} people — a household, not a company.`}
+        </p>
+        <div className="mt-6">
+          <Link href="/register" className="mk-btn mk-btn-primary">
+            {BILLING_LIVE ? "Start free trial" : "Start free"}
+          </Link>
+        </div>
+      </div>
+
+      <ul className="min-w-[260px] flex-1 space-y-2 text-sm">
+        {(copy?.includes ?? []).map((line) => (
+          <li key={line} className="flex gap-2.5">
+            <span aria-hidden className="text-[color:var(--brand)]">
+              ✓
+            </span>
+            <span className="text-[color:var(--ink-soft)]">{line}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
