@@ -8,6 +8,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { ensureSchema, makeTenant, makeUser, scratchEmail, closePool } from "./harness";
 import { listTenants, getTenant, tenantFootprint, tenantsWithoutSubscription } from "../src/queries/tenants";
 import { listUsers, getUser } from "../src/queries/users";
@@ -117,4 +118,43 @@ test("tenants created outside the migration have no subscription until one is ma
   // The assertion that matters is that the query answers at all — the console
   // uses it to show which tenants need attention.
   assert.equal(typeof (await tenantsWithoutSubscription()), "number");
+});
+
+/**
+ * The console has to be able to tell a household from a company.
+ *
+ * Without it, "this tenant has no invoices and no customers" reads as a fault
+ * to whoever is answering the support question, when it is the whole point of a
+ * personal book.
+ */
+test("the tenant list reports which kind of book each one is, and can filter to it", async () => {
+  const { db, schema } = await import("@cashish/core/db");
+  const { tenantKindCounts } = await import("../src/queries/tenants");
+
+  const household = await makeTenant("household");
+  await db
+    .update(schema.tenants)
+    .set({ kind: "personal" })
+    .where(eq(schema.tenants.id, household.id));
+
+  const all = await listTenants();
+  assert.equal(
+    all.find((r) => r.slug === household.slug)?.kind,
+    "personal",
+    "the kind travels with the row",
+  );
+  assert.equal(all.find((r) => r.slug === alpha.slug)?.kind, "business", "the default");
+
+  const personalOnly = await listTenants(undefined, "personal");
+  assert.ok(personalOnly.every((r) => r.kind === "personal"), "the filter admits nothing else");
+  assert.ok(personalOnly.some((r) => r.slug === household.slug));
+
+  const businessOnly = await listTenants(undefined, "business");
+  assert.ok(!businessOnly.some((r) => r.slug === household.slug));
+
+  const counts = await tenantKindCounts();
+  assert.ok(counts.personal >= 1 && counts.business >= 2, "both are counted");
+
+  const detail = await getTenant(household.id);
+  assert.equal(detail?.tenant.kind, "personal", "and the detail page can see it too");
 });
