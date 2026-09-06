@@ -5,6 +5,8 @@ import { listVendors } from "@/lib/vendors";
 import { listPeople, fullName } from "@/lib/people";
 import { listRules } from "@/lib/rules";
 import { PageHeader } from "@/components/ui";
+import { RuleProposals } from "@/components/RuleProposals";
+import { aiIsConfigured } from "@/lib/ai";
 import { RulesView } from "@/components/RulesView";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +30,9 @@ export default async function RulesPage() {
           title="Categorisation rules"
           subtitle="Teach cashish to file transactions automatically."
         />
+        <div className="mb-6">
+          <RuleProposals aiAvailable={aiIsConfigured()} />
+        </div>
         <RulesView
           rules={rules}
           categories={categories}
