@@ -72,13 +72,19 @@ Rules:
 - categoryName must be copied exactly from the supplied list.
 - matchValue must be the shortest distinctive substring of the merchant name.
   It is matched case-insensitively against the transaction description.
-- Do not propose a rule for something that will not recur, or where you cannot
-  tell what the merchant is. Fewer, confident proposals are better than a long
-  list of guesses.
+- Propose a rule for every merchant you recognise. A supermarket, a fuel
+  station, a toll operator, a well-known shop or restaurant chain — these are
+  recognisable and worth a rule even from a single transaction, because they
+  will recur.
+- Skip only what you genuinely cannot identify, or what is obviously one-off.
 - Direction: "out" for spending, "in" for income. Use "any" only when a merchant
   genuinely does both, like a refund-prone shop.
 - Never propose a rule matching a person's name unless the category is clearly
-  wages — paying a person is not automatically payroll.`;
+  wages — paying a person is not automatically payroll.
+
+Returning an empty list is only correct when nothing in the list is
+identifiable. It is not a way to be safe: an unproposed rule leaves the
+spending uncategorised, which is its own kind of wrong.`;
 
 export async function proposeRules(): Promise<ProposalResult> {
   if (!aiIsConfigured()) {
