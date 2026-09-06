@@ -1,7 +1,7 @@
 import { db, first, schema, tenantId } from "@cashish/core/db";
 import { and, desc, eq, gte, isNotNull, lte } from "drizzle-orm";
 import { round2 } from "./format";
-import { notExcluded } from "./transactions";
+import { notExcluded, notTransfer } from "./transactions";
 
 const { transactions, categories, invoices } = schema;
 
@@ -25,6 +25,10 @@ export type ProfitAndLoss = {
   uncategorizedExpense: number;
 };
 
+// Both the P&L and the monthly cashflow route through here, so the transfer
+// guard goes on once rather than in each. Money moved between your own accounts
+// is neither income nor expenditure — counting it makes the sending account
+// look like it spent and the receiving one like it earned.
 function txInRange(from: string, to: string) {
   return db
     .select()
@@ -35,6 +39,7 @@ function txInRange(from: string, to: string) {
         gte(transactions.bookedDate, from),
         lte(transactions.bookedDate, to),
         notExcluded(),
+        notTransfer(),
       ),
     );
 }

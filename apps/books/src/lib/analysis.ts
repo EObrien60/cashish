@@ -1,7 +1,7 @@
 import { and, eq, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { db, schema, tenantId } from "@cashish/core/db";
 import { round2 } from "./format";
-import { notExcluded } from "./transactions";
+import { notExcluded, notTransfer } from "./transactions";
 
 const { transactions, categories, invoices, customers, invoiceLines } = schema;
 
@@ -130,6 +130,10 @@ async function rowsIn(from: string, to: string): Promise<Row[]> {
         gte(transactions.bookedDate, from),
         lte(transactions.bookedDate, to),
         notExcluded(),
+        // Moving money to your own savings is not an overhead, and moving it
+        // back is not revenue. Same omission that had "To EUR Saving" as the
+        // largest merchant on the insights page.
+        notTransfer(),
       ),
     );
 }
@@ -311,6 +315,10 @@ export async function spendReport(from: string, to: string): Promise<SpendReport
         lte(transactions.bookedDate, to),
         lte(transactions.amount, -0.005),
         notExcluded(),
+        // Its own query rather than a fold over rowsIn, so it needed the same
+        // guard separately: without it "To EUR Saving" is the biggest name on
+        // the list of who you paid.
+        notTransfer(),
       ),
     )
     .groupBy(
@@ -445,6 +453,7 @@ export async function trendReport(from: string, to: string): Promise<TrendMonth[
         gte(transactions.bookedDate, from),
         lte(transactions.bookedDate, to),
         notExcluded(),
+        notTransfer(),
       ),
     );
 
