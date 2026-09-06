@@ -18,6 +18,7 @@ import {
   IconPayroll,
   IconMenu,
   IconWand,
+  IconPaperclip,
 } from "./icons";
 
 // Grouped like a macOS source list. The section labels are hidden on the web
@@ -43,6 +44,7 @@ const SECTIONS: {
       { href: "/accounts", label: "Accounts", icon: IconCoins },
       { href: "/transactions", label: "Transactions", icon: IconLedger },
       { href: "/rules", label: "Rules", icon: IconRules },
+      { href: "/documents", label: "Documents", icon: IconPaperclip },
       { href: "/budget", label: "Budget", icon: IconCoins, personalOnly: true },
     ],
   },

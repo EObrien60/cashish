@@ -399,6 +399,54 @@ export const payments = pgTable(
   ],
 );
 
+// --- Documents --------------------------------------------------------------
+// Anything a person can point at and say "this is a thing that happened": a
+// supplier invoice, a receipt, a payslip, a bill. Upload it and a model reads
+// it into fields.
+//
+// The extraction is stored HERE and not in the books. A document is a proposal
+// until somebody confirms it, and that is the whole point: an invoice read
+// wrongly and posted silently is a wrong number in a VAT return that nobody
+// went looking for. Confirming is what creates the bill or attaches the
+// receipt, and it goes through the ordinary domain functions.
+//
+// The file itself lives in the same private blob store as receipts and signed
+// contracts. The extraction is kept even after confirmation, so "why does this
+// bill say €81.60?" can always be answered by looking at what was read.
+export const documents = pgTable(
+  "documents",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull().default("application/octet-stream"),
+    size: integer("size").notNull().default(0),
+    storagePath: text("storage_path").notNull(),
+    /** pending | confirmed | rejected | failed */
+    status: text("status").notNull().default("pending"),
+    /** What the model decided it is: bill | receipt | sales_invoice | payslip | other. */
+    kind: text("kind").notNull().default("other"),
+    /** The whole extraction, as read. Kept forever: it is the audit trail. */
+    extraction: text("extraction").default(""),
+    /** Why it could not be read, when it could not. */
+    error: text("error").default(""),
+    /** What confirming it created, so the two can be found from each other. */
+    billId: text("bill_id").references(() => bills.id, { onDelete: "set null" }),
+    transactionId: text("transaction_id"),
+    uploadedAt: text("uploaded_at").notNull().default(now),
+    reviewedAt: text("reviewed_at"),
+  },
+  (t) => [
+    index("document_status_idx").on(t.tenantId, t.status),
+    // Same composite-FK reasoning as receipts: transactions has a composite key.
+    foreignKey({
+      columns: [t.tenantId, t.transactionId],
+      foreignColumns: [transactions.tenantId, transactions.id],
+      name: "document_tx_fk",
+    }).onDelete("set null"),
+  ],
+);
+
 // --- Contracts --------------------------------------------------------------
 // An agreement with a customer: what was agreed, for how long, for how much,
 // and the paperwork that says so.
