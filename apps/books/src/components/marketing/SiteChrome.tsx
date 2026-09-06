@@ -48,8 +48,9 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <div className="mk-display text-lg">cashish</div>
             <p className="mt-2 text-sm leading-relaxed text-[color:var(--ink-faint)]">
-              EUR bookkeeping for a small Irish business. It works out the figures;
-              you file them. Check anything against ROS before you submit it.
+              EUR bookkeeping for a small Irish business — and for your own money, on the
+              same ledger. It works out the figures; you file them. Check anything against
+              ROS before you submit it.
             </p>
           </div>
           <div className="flex gap-12 text-sm">
@@ -83,6 +84,7 @@ export function SiteFooter() {
                 <li>Data in Frankfurt, inside the EU</li>
                 <li>Euro only, by design</li>
                 <li>Cash or invoice basis VAT</li>
+                <li>Business and personal books</li>
               </ul>
             </div>
           </div>

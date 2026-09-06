@@ -2,7 +2,7 @@ import Link from "next/link";
 import { currentSession } from "@/lib/session";
 import { FAQ } from "@/lib/marketing";
 import { SiteNav, SiteFooter } from "@/components/marketing/SiteChrome";
-import { PlanCards, BillingNotice } from "@/components/marketing/PlanCards";
+import { PlanCards, PersonalPlanCard, BillingNotice } from "@/components/marketing/PlanCards";
 
 export const dynamic = "force-dynamic";
 
@@ -15,15 +15,24 @@ export default async function PricingPage() {
         <div className="mx-auto max-w-6xl px-6 pb-16 pt-14">
           <div className="mk-kicker">Pricing</div>
           <h1 className="mk-rise mt-4 max-w-2xl text-4xl leading-tight sm:text-5xl">
-            One price per business. Everything in it.
+            One price per set of books. Everything in it.
           </h1>
           <p className="mk-rise mt-4 max-w-xl text-[color:var(--ink-soft)]" style={{ animationDelay: "60ms" }}>
             No per-transaction charge, no fee for inviting your accountant, no add-on for
-            the VAT return. A plan covers one business — what changes between them is how
-            many people work in it and what it can do. Keep a second set of books and it
-            is a second subscription.
+            the VAT return. A plan covers one set of books, so a second business — or your
+            own money kept alongside it — is its own subscription.
           </p>
+
           <div className="mt-12">
+            <PersonalPlanCard />
+          </div>
+
+          <h2 className="mk-display mt-14 text-2xl">For a business</h2>
+          <p className="mt-2 max-w-xl text-sm text-[color:var(--ink-soft)]">
+            What changes between these is how many people work in the business and what it
+            can do — never how many businesses you may own.
+          </p>
+          <div className="mt-6">
             <PlanCards />
           </div>
           <BillingNotice />
