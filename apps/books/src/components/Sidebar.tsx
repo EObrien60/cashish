@@ -20,9 +20,19 @@ import {
 
 // Grouped like a macOS source list. The section labels are hidden on the web
 // (see .nav-section in globals.css) and only appear in the desktop shell.
+// `businessOnly` marks the trading half of the app. A personal book is the same
+// ledger with that half switched off: there is nobody to invoice, no VAT return
+// to file and no payroll to run, and showing those to someone budgeting their
+// groceries is how an app feels like it was built for somebody else.
 const SECTIONS: {
   label: string | null;
-  items: { href: string; label: string; icon: (p: { className?: string }) => React.ReactNode }[];
+  items: {
+    href: string;
+    label: string;
+    icon: (p: { className?: string }) => React.ReactNode;
+    businessOnly?: boolean;
+    personalOnly?: boolean;
+  }[];
 }[] = [
   { label: null, items: [{ href: "/", label: "Dashboard", icon: IconDashboard }] },
   {
@@ -30,27 +40,31 @@ const SECTIONS: {
     items: [
       { href: "/transactions", label: "Transactions", icon: IconLedger },
       { href: "/rules", label: "Rules", icon: IconRules },
+      { href: "/budget", label: "Budget", icon: IconCoins, personalOnly: true },
     ],
   },
   {
     label: "Sales",
     items: [
-      { href: "/invoices", label: "Invoices", icon: IconInvoice },
-      { href: "/customers", label: "Customers", icon: IconUsers },
-      { href: "/products", label: "Products", icon: IconBox },
+      { href: "/invoices", label: "Invoices", icon: IconInvoice, businessOnly: true },
+      { href: "/customers", label: "Customers", icon: IconUsers, businessOnly: true },
+      { href: "/products", label: "Products", icon: IconBox, businessOnly: true },
     ],
   },
   {
     label: "Purchases",
-    items: [{ href: "/vendors", label: "Vendors", icon: IconBox }],
+    items: [{ href: "/vendors", label: "Vendors", icon: IconBox, businessOnly: true }],
   },
-  { label: "People", items: [{ href: "/payroll", label: "Payroll", icon: IconPayroll }] },
+  {
+    label: "People",
+    items: [{ href: "/payroll", label: "Payroll", icon: IconPayroll, businessOnly: true }],
+  },
   {
     label: "Reporting",
     items: [
       { href: "/reports", label: "Reports", icon: IconReport },
       { href: "/reports/cashflow", label: "Cash flow", icon: IconReport },
-      { href: "/vat", label: "VAT return", icon: IconVat },
+      { href: "/vat", label: "VAT return", icon: IconVat, businessOnly: true },
     ],
   },
   { label: null, items: [{ href: "/settings", label: "Settings", icon: IconSettings }] },
@@ -58,13 +72,15 @@ const SECTIONS: {
 
 type Props = {
   role: Role;
+  kind: string;
   tenants: { id: string; name: string }[];
   activeTenantId: string | null;
   switchTenant: (tenantId: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
-export function Sidebar({ role, tenants, activeTenantId, switchTenant, logout }: Props) {
+export function Sidebar({ role, kind, tenants, activeTenantId, switchTenant, logout }: Props) {
+  const personal = kind === "personal";
   const path = usePathname();
   const [, start] = useTransition();
   const isActive = (href: string) =>
@@ -74,9 +90,10 @@ export function Sidebar({ role, tenants, activeTenantId, switchTenant, logout }:
   // page are gated; hiding Settings would just make the app look broken to them.
   const visible = SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter(
-      (item) => item.href !== "/settings" || can(role, "settings:write") || can(role, "tenant:admin"),
-    ),
+    items: section.items.filter((item) => {
+      if (personal ? item.businessOnly : item.personalOnly) return false;
+      return item.href !== "/settings" || can(role, "settings:write") || can(role, "tenant:admin");
+    }),
   })).filter((section) => section.items.length > 0);
 
   return (

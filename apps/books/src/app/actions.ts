@@ -1,5 +1,6 @@
 "use server";
 
+import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db, first, schema, tenantId, type Payslip } from "@cashish/core/db";
@@ -543,6 +544,31 @@ export async function deletePayRunAction(id: string) {
 }
 
 // ---- Settings -------------------------------------------------------------
+
+// --- Budgets (personal books) ----------------------------------------------
+
+export async function setBudgetAction(categoryId: string, month: string, amount: number) {
+  return withCapability("books:write", async () => {
+    await setBudget({ categoryId, month, amount });
+    revalidatePath("/budget");
+  });
+}
+
+export async function copyBudgetAction(from: string, to: string) {
+  return withCapability("books:write", async () => {
+    const copied = await copyBudget(from, to);
+    revalidatePath("/budget");
+    return copied;
+  });
+}
+
+export async function suggestBudgetAction(month: string) {
+  return withCapability("books:write", async () => {
+    const written = await suggestBudget(month);
+    revalidatePath("/budget");
+    return written;
+  });
+}
 
 export async function saveSettings(data: Partial<typeof settings.$inferInsert>) {
   return withCapability("settings:write", async () => {

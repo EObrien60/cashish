@@ -41,10 +41,33 @@ export const tenants = pgTable(
     id: text("id").primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+    /**
+     * What kind of books these are: 'business' | 'personal'.
+     *
+     * A personal book is the same ledger with the trading half switched off —
+     * no invoices, customers, VAT return or payroll — and a budget per category
+     * instead. It is a MODE, and deliberately not the same column as `region`
+     * below: mode says which surfaces exist, region says what the numbers mean.
+     * One enum covering both would be 'business', 'personal', 'uk', and then
+     * inevitably 'personal-uk', which is a product of two axes pretending to be
+     * a list.
+     */
+    kind: text("kind").notNull().default("business"),
+    /**
+     * Jurisdiction: 'IE' | 'GB'. Drives the VAT rates seeded, the VAT basis and
+     * eventually payroll. Separate from `kind` for the reason given above, and
+     * present now because cashish UK is next and a backfilled column is far
+     * cheaper than a backfilled column with data in it.
+     */
+    region: text("region").notNull().default("IE"),
+    currency: text("currency").notNull().default("EUR"),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [uniqueIndex("tenant_slug_idx").on(t.slug)],
 );
+
+export type TenantKind = "business" | "personal";
+export type TenantRegion = "IE" | "GB";
 
 /** Tenant-scoping column, repeated on every domain table. */
 const tenantId = () =>
@@ -383,6 +406,38 @@ export const receipts = pgTable(
       foreignColumns: [transactions.tenantId, transactions.id],
       name: "receipt_tx_fk",
     }).onDelete("cascade"),
+  ],
+);
+
+// --- Budgets ----------------------------------------------------------------
+// What you MEANT to spend in a category in a month, against which the ledger is
+// the actual. This is the whole of the envelope idea, and the only table a
+// personal book needs that a business book does not.
+//
+// One row per (category, month) rather than a running envelope balance: a
+// budget is a statement of intent for a month, and last month's overspend
+// rolling forward is a policy that can be computed from these rows if it is
+// ever wanted. Storing the rolled-up balance instead would make it the only
+// number in cashish that cannot be recomputed from the ledger.
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    /** YYYY-MM. Text, like every other date here, so it sorts and compares. */
+    month: text("month").notNull(),
+    /** Always positive: the direction comes from the category's kind. */
+    amount: doublePrecision("amount").notNull().default(0),
+    note: text("note").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("budget_month_idx").on(t.tenantId, t.month),
+    // One budget per category per month — a second row would silently double it.
+    uniqueIndex("budget_cat_month_idx").on(t.tenantId, t.categoryId, t.month),
   ],
 );
 

@@ -15,8 +15,8 @@ export default async function BusinessesPage() {
   return (
     <div>
       <PageHeader
-        title="Businesses"
-        subtitle="Each keeps its own books, invoice numbering, categories, VAT rates and people. Nothing is shared between them."
+        title="Your books"
+        subtitle="A business or a personal book. Each keeps its own categories, rules and people, and nothing is shared between them."
       />
       <BusinessesView
         businesses={memberships.map((m) => ({
@@ -24,6 +24,7 @@ export default async function BusinessesPage() {
           slug: m.slug,
           name: m.name,
           role: m.role,
+          kind: m.kind,
         }))}
         activeId={session.tenantId}
         createBusiness={createBusiness}

@@ -18,6 +18,7 @@ import {
 } from "@/lib/auth";
 import { currentSession, setSessionCookie, clearSessionCookie } from "@/lib/session";
 import { createTenant, findTenantBySlug } from "@/db/seed";
+import type { TenantKind } from "@cashish/core/db";
 import { isRole, requireCapability, type Role } from "@cashish/core/rbac";
 import { assertWithinUserLimit, LimitError } from "@/lib/limits";
 import { uid } from "@/lib/id";
@@ -79,8 +80,11 @@ export async function register(formData: FormData) {
   const businessName = String(formData.get("businessName") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const kind: TenantKind = formData.get("kind") === "personal" ? "personal" : "business";
 
-  if (!businessName) return { error: "What is the business called?" };
+  if (!businessName) {
+    return { error: kind === "personal" ? "What should the book be called?" : "What is the business called?" };
+  }
   if (!email || !email.includes("@")) return { error: "That does not look like an email address." };
   if (password.length < 12) {
     return { error: "Choose a password of at least 12 characters." };
@@ -104,10 +108,11 @@ export async function register(formData: FormData) {
   let slug = base;
   for (let n = 2; await findTenantBySlug(slug); n += 1) slug = `${base}-${n}`;
 
-  const tenantId = await createTenant({ slug, name: businessName });
+  const tenantId = await createTenant({ slug, name: businessName, kind });
   await addMembership(userId, tenantId, "owner");
   await setSessionCookie({ uid: userId, tid: tenantId });
-  redirect("/?welcome=1");
+  // A personal book has no invoices to look at; the ledger is the front door.
+  redirect(kind === "personal" ? "/transactions?welcome=1" : "/?welcome=1");
 }
 
 // ---- Businesses ------------------------------------------------------------
@@ -124,6 +129,7 @@ export async function createBusiness(formData: FormData) {
   if (!session) throw new Error("not authenticated");
 
   const name = String(formData.get("name") ?? "").trim();
+  const kind: TenantKind = formData.get("kind") === "personal" ? "personal" : "business";
   if (!name) return { error: "A name is required." };
 
   // Slug from the name, and it has to be unique across the deployment because it
@@ -137,12 +143,12 @@ export async function createBusiness(formData: FormData) {
   let slug = base;
   for (let n = 2; await findTenantBySlug(slug); n += 1) slug = `${base}-${n}`;
 
-  const tenantId = await createTenant({ slug, name });
+  const tenantId = await createTenant({ slug, name, kind });
   await addMembership(session.userId, tenantId, "owner");
   // Switch into it, so "create" lands you inside the thing you just made.
   await setSessionCookie({ uid: session.userId, tid: tenantId });
   revalidatePath("/", "layout");
-  return { slug };
+  return { slug, kind };
 }
 
 // ---- Members and invites (owner only) --------------------------------------

@@ -212,8 +212,10 @@ export function TransactionsView({
           <div>
             <h2 className="font-semibold">Import bank statement</h2>
             <p className="text-sm text-ink-faint mt-0.5">
-              Upload a Revolut CSV. Re-uploading overlapping statements is safe —
-              only new transactions are added (matched on transaction ID).
+              Upload a Revolut CSV, business or personal. Re-uploading overlapping
+              statements is safe — only new transactions are added, matched on the
+              statement&rsquo;s transaction ID where it has one and on the line itself
+              where it does not.
             </p>
           </div>
           <div>
