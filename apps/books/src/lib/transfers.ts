@@ -26,10 +26,17 @@ const { transactions, accounts } = schema;
 //
 //   1. Revolut names both ends of an internal move in the description:
 //      "Main · EUR → Main · GBP". Both sides are read off it.
-//   2. "To X" / "From X" where X is already an account in this book.
-//   3. "To X" / "From X" where X is one of Revolut's own product words —
-//      Savings, Credit, Pocket, a currency code. This is the rule that catches
-//      a card payment on the FIRST import, before the card statement exists.
+//   2. "To X" / "From X" — optionally prefixed "Transfer to", "Payment to" —
+//      where X names an account in this book, allowing for the bank decorating
+//      the name: "To EUR Saving" is the account called "Saving".
+//   3. The same shape where X is one of Revolut's own product words — Savings,
+//      Credit, Pocket, a currency code. This is the rule that catches a card
+//      payment on the FIRST import, before the card statement exists.
+//
+// What none of them can do is tell a move to your own account called "Ethan"
+// from a payment to a person called Ethan. That is not a pattern problem, it is
+// missing information, so it is asked rather than guessed: markTransfer is the
+// answer, one click on the ledger, and reversible.
 //
 // Anything else is left alone. A wrongly detected transfer silently removes
 // real spending from the books, which is a worse failure than missing one — a
@@ -39,8 +46,15 @@ const { transactions, accounts } = schema;
 /** "Main · EUR → Main · GBP" — the shape Revolut writes an internal move in. */
 const ARROW = /^(.+?)\s*(?:→|->|➔)\s*(.+)$/;
 
-/** "To Savings", "From Current" — see TRUSTED below for when this is believed. */
-const TO_FROM = /^(to|from)\s+(.{2,40})$/i;
+/**
+ * "To Savings", "From Current", "Transfer to Savings", "Payment to Credit".
+ *
+ * The optional leading verb matters: Revolut writes a plain "To EUR" on one
+ * product and "Transfer to …" on another, and the version without the verb was
+ * the only one recognised — which is how €15,090 of "Transfer to …" ended up
+ * counted as spending.
+ */
+const TO_FROM = /^(?:transfer|payment|sent|moved|move)?\s*(to|from)\s+(.{2,40})$/i;
 
 /**
  * Revolut's own account vocabulary.
@@ -75,6 +89,38 @@ const CURRENCY_CODE = /^[a-z]{3}( account)?$/;
 function looksLikeOwnAccount(name: string): boolean {
   const v = name.toLowerCase().replace(/\s+/g, " ").trim();
   return PRODUCT_WORDS.has(v) || CURRENCY_CODE.test(v);
+}
+
+/**
+ * The account a phrase names, allowing for the bank decorating it.
+ *
+ * "To EUR Saving" is a move to the account called "Saving": the statement adds
+ * the currency, the account list does not. Exact matching missed every one of
+ * those — €29,388 of them on one book.
+ *
+ * Containment is only trusted for names of four characters or more, and only on
+ * a word boundary. Without that, an account called "EUR" would claim "To EUR
+ * Saving" AND every merchant with those three letters in it, and a false
+ * transfer silently deletes real spending.
+ */
+function accountNamed(
+  phrase: string,
+  byName: Map<string, { id: string; name: string }>,
+): { id: string; name: string } | undefined {
+  const target = norm(phrase);
+  const exact = byName.get(target);
+  if (exact) return exact;
+
+  let best: { id: string; name: string } | undefined;
+  for (const [name, account] of byName) {
+    if (name.length < 4) continue;
+    const boundary = new RegExp(`(^|\\s)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|\\s)`);
+    if (boundary.test(target)) {
+      // Prefer the longest match: "Main · GBP" over "Main" when both fit.
+      if (!best || name.length > norm(best.name).length) best = account;
+    }
+  }
+  return best;
 }
 
 export type TransferHit = {
@@ -138,7 +184,9 @@ export async function detectTransfers(options: { batch?: string } = {}): Promise
       // Hughes" is payroll and matches neither.
       if (toFrom) {
         const target = toFrom[2].trim();
-        if (byName.has(norm(target)) || looksLikeOwnAccount(target)) counterpart = target;
+        const named = accountNamed(target, byName as Map<string, { id: string; name: string }>);
+        if (named) counterpart = named.name;
+        else if (looksLikeOwnAccount(target)) counterpart = target;
       }
     }
 

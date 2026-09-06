@@ -537,3 +537,87 @@ test("two identical transactions on one day are both kept, and a re-import adds 
   const balances = await asTenant(tenant, () => accountBalances());
   assert.equal(balances.find((b) => b.name === "Current")?.balance, -7);
 });
+
+test("the bank's decoration of an account name does not hide a transfer", async () => {
+  await reset();
+  // Real case: the account is called "Saving"; the statement writes
+  // "To EUR Saving". Exact matching missed every one of these — €29,388 worth
+  // on one book, all of it counted as spending.
+  const { ensureAccount } = await import("../src/lib/accounts");
+  await asTenant(tenant, () => ensureAccount({ name: "Saving", kind: "savings" }));
+
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+TRANSFER,Main,2026-08-03 09:00:00,2026-08-03 09:00:00,To EUR Saving,-2000.00,0.00,EUR,COMPLETED,1000.00
+`;
+  const summary = await asTenant(tenant, () =>
+    importTransactions(parseStatementCsv(csv).rows, []),
+  );
+  assert.equal(summary.transfers?.detected, 1, "moving to your own savings is not spending");
+
+  const [row] = await asTenant(tenant, () => listTransactions({ excluded: "only" }));
+  assert.match(row.excludedReason ?? "", /Transfer to Saving/);
+});
+
+test("a 'Transfer to' prefix is read the same as a bare 'To'", async () => {
+  await reset();
+  const { ensureAccount } = await import("../src/lib/accounts");
+  await asTenant(tenant, () => ensureAccount({ name: "Savings", kind: "savings" }));
+
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+TRANSFER,Main,2026-08-03 09:00:00,2026-08-03 09:00:00,Transfer to Savings,-300.00,0.00,EUR,COMPLETED,700.00
+TRANSFER,Main,2026-08-04 09:00:00,2026-08-04 09:00:00,Payment to Credit,-100.00,0.00,EUR,COMPLETED,600.00
+`;
+  const summary = await asTenant(tenant, () => importTransactions(parseStatementCsv(csv).rows, []));
+  assert.equal(summary.transfers?.detected, 2);
+});
+
+test("a short account name cannot claim every merchant that contains it", async () => {
+  await reset();
+  const { ensureAccount } = await import("../src/lib/accounts");
+  // "EUR" is three characters. Containment matching must not let it swallow
+  // unrelated descriptions, because a false transfer deletes real spending.
+  await asTenant(tenant, () => ensureAccount({ name: "EUR", kind: "current" }));
+
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+CARD_PAYMENT,Main,2026-08-05 09:00:00,2026-08-05 09:00:00,To EURO GARDEN CENTRE,-60.00,0.00,EUR,COMPLETED,940.00
+`;
+  const summary = await asTenant(tenant, () => importTransactions(parseStatementCsv(csv).rows, []));
+  assert.equal(summary.transfers?.detected, 0, "a garden centre is not your EUR account");
+  const inBooks = await asTenant(tenant, () => listTransactions({}));
+  assert.equal(inBooks.length, 1, "and it stays in the books");
+});
+
+test("paying a person is still not a transfer, however it is worded", async () => {
+  await reset();
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+TRANSFER,Main,2026-08-06 09:00:00,2026-08-06 09:00:00,Transfer to ETHAN,-1500.00,0.00,EUR,COMPLETED,500.00
+TRANSFER,Main,2026-08-07 09:00:00,2026-08-07 09:00:00,To Sarah Jane Hughes,-1500.00,0.00,EUR,COMPLETED,-1000.00
+`;
+  const summary = await asTenant(tenant, () => importTransactions(parseStatementCsv(csv).rows, []));
+  assert.equal(
+    summary.transfers?.detected,
+    0,
+    "a move to your own account called Ethan and a payment to a person called Ethan are indistinguishable, so neither is assumed",
+  );
+});
+
+test("marking a transfer by hand takes both it and its match out of spending", async () => {
+  await reset();
+  const { ensureAccount } = await import("../src/lib/accounts");
+  const { markTransfer } = await import("../src/lib/transfers");
+  const savings = await asTenant(tenant, () => ensureAccount({ name: "Rainy day", kind: "savings" }));
+
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+TRANSFER,Main,2026-08-06 09:00:00,2026-08-06 09:00:00,Transfer to ETHAN,-1500.00,0.00,EUR,COMPLETED,500.00
+`;
+  await asTenant(tenant, () => importTransactions(parseStatementCsv(csv).rows, []));
+  const [row] = await asTenant(tenant, () => listTransactions({}));
+  assert.ok(row, "it is in the books until someone says otherwise");
+
+  await asTenant(tenant, () => markTransfer(row.id, savings.id));
+
+  const stillCounted = await asTenant(tenant, () => listTransactions({}));
+  assert.equal(stillCounted.length, 0, "once said, it is not spending");
+  const [excluded] = await asTenant(tenant, () => listTransactions({ excluded: "only" }));
+  assert.match(excluded.excludedReason ?? "", /Transfer to Rainy day/);
+});
