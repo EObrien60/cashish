@@ -335,10 +335,13 @@ export const invoices = pgTable(
     vatTotal: doublePrecision("vat_total").notNull().default(0),
     total: doublePrecision("total").notNull().default(0),
     amountPaid: doublePrecision("amount_paid").notNull().default(0),
+    /** Which agreement this was raised under, so a contract can total itself. */
+    contractId: text("contract_id").references(() => contracts.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [
     index("inv_cust_idx").on(t.tenantId, t.customerId),
+    index("inv_contract_idx").on(t.tenantId, t.contractId),
     index("inv_status_idx").on(t.tenantId, t.status),
     // An invoice number is the tenant's own reference and must not repeat within
     // the tenant. Enforced here, not just by the sequence, so a supplied number
@@ -396,6 +399,58 @@ export const payments = pgTable(
   ],
 );
 
+// --- Contracts --------------------------------------------------------------
+// An agreement with a customer: what was agreed, for how long, for how much,
+// and the paperwork that says so.
+//
+// Distinct from a recurring invoice, which is only the billing schedule. A
+// contract is the thing the schedule bills FOR, and it answers questions a
+// schedule cannot: what is this worth in total, how much of it has been
+// invoiced, when does it end, and where is the signed copy. A contract may
+// have a schedule, several, or none at all — a fixed-price project is a
+// contract that is invoiced by hand.
+//
+// Deliberately NOT called `subscriptions`: that table already exists in this
+// database and means cashish's own plan billing. Two things called
+// subscriptions, one being what we charge customers and the other what our
+// customers charge theirs, is a confusion nobody recovers from.
+export const contracts = pgTable(
+  "contracts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    /** Their PO number, or your own reference for it. */
+    reference: text("reference").default(""),
+    /** draft | active | completed | cancelled */
+    status: text("status").notNull().default("active"),
+    startDate: text("start_date").notNull(),
+    /** Open-ended when null — a retainer that runs until somebody stops it. */
+    endDate: text("end_date"),
+    /**
+     * The total agreed, when there is one. Null for an open-ended retainer,
+     * where the only honest answer is "whatever it bills".
+     */
+    value: doublePrecision("value"),
+    currency: text("currency").notNull().default("EUR"),
+    terms: text("terms").default(""),
+    notes: text("notes").default(""),
+    // The signed document, in the same private blob store as receipts.
+    documentPath: text("document_path").default(""),
+    documentName: text("document_name").default(""),
+    documentMime: text("document_mime").default(""),
+    documentSize: integer("document_size").notNull().default(0),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("contract_customer_idx").on(t.tenantId, t.customerId),
+    index("contract_status_idx").on(t.tenantId, t.status),
+  ],
+);
+
 // --- Recurring invoices ----------------------------------------------------
 // Templates that spawn real invoices on a schedule. No background worker; due
 // invoices are generated on demand (app open, or the MCP tool).
@@ -420,6 +475,8 @@ export const recurringInvoices = pgTable(
     autoSend: boolean("auto_send").notNull().default(false),
     notes: text("notes").default(""),
     terms: text("terms").default(""),
+    /** The agreement this schedule bills for, when there is one. */
+    contractId: text("contract_id").references(() => contracts.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [

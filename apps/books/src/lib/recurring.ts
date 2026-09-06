@@ -43,6 +43,8 @@ export type RecurringInput = {
   occurrencesLimit?: number | null;
   dueDays: number;
   autoSend: boolean;
+  /** The agreement this schedule bills for. */
+  contractId?: string | null;
   notes?: string;
   terms?: string;
   lines: LineInput[];
@@ -67,6 +69,7 @@ export async function saveRecurring(input: RecurringInput) {
           autoSend: input.autoSend,
           notes: input.notes ?? "",
           terms: input.terms ?? "",
+          contractId: input.contractId ?? null,
         })
         .where(and(eq(recurringInvoices.tenantId, tid), eq(recurringInvoices.id, id)));
     } else {
@@ -89,6 +92,7 @@ export async function saveRecurring(input: RecurringInput) {
           autoSend: input.autoSend,
           notes: input.notes ?? "",
           terms: input.terms ?? "",
+          contractId: input.contractId ?? null,
         });
     }
     await trx
@@ -265,6 +269,9 @@ export async function generateDue(refISO = todayISO()): Promise<GenerateResult> 
         dueDate: addDays(next, r.dueDays),
         notes: r.notes ?? "",
         terms: r.terms ?? "",
+        // An invoice raised by a schedule belongs to the same agreement the
+        // schedule does, or a contract could never total what it has billed.
+        contractId: r.contractId ?? null,
         lines: lineInputs,
       });
       generated++;

@@ -64,6 +64,13 @@
       "when": 1788694427423,
       "tag": "0008_modern_cyclops",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788697062699,
+      "tag": "0009_luxuriant_arachne",
+      "breakpoints": true
     }
   ]
 }

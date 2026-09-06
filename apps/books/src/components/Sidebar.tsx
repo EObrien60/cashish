@@ -48,6 +48,7 @@ const SECTIONS: {
     label: "Sales",
     items: [
       { href: "/invoices", label: "Invoices", icon: IconInvoice, businessOnly: true },
+      { href: "/contracts", label: "Contracts", icon: IconInvoice, businessOnly: true },
       { href: "/customers", label: "Customers", icon: IconUsers, businessOnly: true },
       { href: "/products", label: "Products", icon: IconBox, businessOnly: true },
     ],
