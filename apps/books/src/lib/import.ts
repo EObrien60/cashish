@@ -192,9 +192,11 @@ export function parseStatementCsv(text: string): ParseResult {
     const dateStarted = get(r, "dateStarted") || null;
     const bookedDate = toISODate(dateCompleted || dateStarted);
 
-    const id =
-      get(r, "id") ||
-      derivedId([
+    const providerId = get(r, "id");
+    let id = providerId;
+
+    if (!id) {
+      const base = derivedId([
         dateCompleted,
         dateStarted,
         get(r, "description"),
@@ -203,12 +205,24 @@ export function parseStatementCsv(text: string): ParseResult {
         get(r, "balance"),
         get(r, "currency"),
       ]);
+      // Two genuinely different transactions can be identical on paper: the
+      // same coffee bought twice on the same day, in a file with no running
+      // balance to tell them apart. Silently keeping one of them loses money
+      // from the ledger, so the second occurrence is numbered instead. The
+      // numbering is positional, so re-importing the same file produces the
+      // same ids again and the import stays idempotent.
+      let candidate = base;
+      for (let n = 2; seenInFile.has(candidate); n += 1) candidate = `${base}_${n}`;
+      id = candidate;
+    }
+
     if (!id) {
       errors.push(`Row ${i + 2}: missing transaction ID, skipped.`);
       continue;
     }
-    // de-dupe within the same file too
-    if (seenInFile.has(id)) continue;
+    // A repeated PROVIDER id is the same transaction listed twice, which is a
+    // quirk of the export rather than two payments, so that one is skipped.
+    if (providerId && seenInFile.has(id)) continue;
     seenInFile.add(id);
 
     if (amount === null) {

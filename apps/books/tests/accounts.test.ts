@@ -515,3 +515,25 @@ test("merging keeps the transfer pointing somewhere real", async () => {
   const target = accounts.find((a) => a.id === transfer.transferAccountId);
   assert.equal(target?.name, "Flexible savings");
 });
+
+test("two identical transactions on one day are both kept, and a re-import adds neither", async () => {
+  await reset();
+  // No ID column and no balance column: nothing distinguishes these two rows,
+  // and dropping one would quietly lose €3.50 from the ledger.
+  const csv = `Date,Description,"Value, EUR"
+"2 Sept 2026, 09:00:00",Insomnia Coffee,-3.50
+"2 Sept 2026, 09:00:00",Insomnia Coffee,-3.50
+`;
+  const first = await asTenant(tenant, () =>
+    importTransactions(parseStatementCsv(csv).rows, [], { fallbackAccount: "Current" }),
+  );
+  assert.equal(first.inserted, 2, "two coffees is two transactions");
+
+  const again = await asTenant(tenant, () =>
+    importTransactions(parseStatementCsv(csv).rows, [], { fallbackAccount: "Current" }),
+  );
+  assert.equal(again.inserted, 0, "and the same file twice is still idempotent");
+
+  const balances = await asTenant(tenant, () => accountBalances());
+  assert.equal(balances.find((b) => b.name === "Current")?.balance, -7);
+});
