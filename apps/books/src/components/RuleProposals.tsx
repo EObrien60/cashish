@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { money } from "@/lib/format";
 import { Card } from "./ui";
 import { proposeRulesAction, acceptProposedRuleAction } from "@/app/actions";
-import type { RuleProposal } from "@/lib/ai-rules";
+import type { RuleProposal, ProposalRun } from "@/lib/ai-rules";
 
 /**
  * Suggested rules.
@@ -15,10 +15,19 @@ import type { RuleProposal } from "@/lib/ai-rules";
  * category judgement and nothing else. Nothing is applied until it is accepted,
  * and accepting goes through the ordinary saveRule path.
  */
-export function RuleProposals({ aiAvailable }: { aiAvailable: boolean }) {
+export function RuleProposals({
+  aiAvailable,
+  accounts,
+}: {
+  aiAvailable: boolean;
+  /** Accounts with uncategorised spending, biggest first. */
+  accounts: { id: string | null; name: string; uncategorised: number; amount: number }[];
+}) {
   const router = useRouter();
   const [, start] = useTransition();
-  const [proposals, setProposals] = useState<RuleProposal[] | null>(null);
+  const [accountKey, setAccountKey] = useState(accounts[0] ? String(accounts[0].id) : "");
+  const [run, setRun] = useState<ProposalRun | null>(null);
+  const proposals: RuleProposal[] | null = run ? run.proposals : null;
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,12 +35,29 @@ export function RuleProposals({ aiAvailable }: { aiAvailable: boolean }) {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-[260px] flex-1">
           <h2 className="font-semibold">Suggested rules</h2>
           <p className="text-sm text-ink-faint mt-0.5">
-            Looks at what is uncategorised and proposes rules for it. Nothing is applied until you
-            accept it, and the counts are measured, not guessed.
+            Works through one account at a time, in batches, looking up merchants it is unsure
+            about before suggesting anything. Nothing is applied until you accept it, and every
+            count is measured against your ledger rather than guessed.
           </p>
+          {accounts.length > 0 && (
+            <label className="mt-2 block text-sm">
+              <span className="mb-1 block text-xs font-medium text-ink-soft">Account</span>
+              <select
+                className="input w-auto"
+                value={accountKey}
+                onChange={(e) => setAccountKey(e.target.value)}
+              >
+                {accounts.map((a) => (
+                  <option key={String(a.id)} value={String(a.id)}>
+                    {a.name} — {a.uncategorised} uncategorised
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         <button
           className="btn-outline"
@@ -40,23 +66,34 @@ export function RuleProposals({ aiAvailable }: { aiAvailable: boolean }) {
           onClick={() => {
             setBusy(true);
             setError(null);
+            setRun(null);
             start(async () => {
-              const r = await proposeRulesAction();
-              if (r.ok) setProposals(r.value);
+              const r = await proposeRulesAction(accountKey === "null" ? null : accountKey);
+              if (r.ok) setRun(r.value);
               else setError(r.reason);
               setBusy(false);
             });
           }}
         >
-          {busy ? "Looking…" : "Suggest rules"}
+          {busy ? "Reading the account…" : "Suggest rules"}
         </button>
       </div>
 
       {error && <p className="mt-3 text-sm text-money-out">{error}</p>}
 
-      {proposals?.length === 0 && (
+      {run && run.proposals.length === 0 && (
         <p className="mt-3 text-sm text-ink-faint">
-          Nothing worth a rule — what is left uncategorised looks like one-offs.
+          Looked at {run.examined} merchant{run.examined === 1 ? "" : "s"} on {run.accountName} and
+          found nothing it could identify confidently.
+          {run.remaining > 0 && ` ${run.remaining} smaller ones were not reached — run it again to continue.`}
+        </p>
+      )}
+
+      {run && run.proposals.length > 0 && (
+        <p className="mt-3 text-sm text-ink-faint">
+          {run.accountName}: {run.examined} merchant{run.examined === 1 ? "" : "s"} examined in{" "}
+          {run.batches} batch{run.batches === 1 ? "" : "es"}
+          {run.remaining > 0 && `, ${run.remaining} still to go — run it again to continue`}.
         </p>
       )}
 
