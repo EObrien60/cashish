@@ -2,5 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "buildCommand": "npm run db:migrate && npm run build",
-  "regions": ["fra1"]
+  "regions": [
+    "fra1"
+  ],
+  "//": "Shares a repository with `cashish-admin`, so only build when something this app depends on changed. See the same note there about the two builds racing on migrations.",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/books packages/core package.json package-lock.json"
 }
