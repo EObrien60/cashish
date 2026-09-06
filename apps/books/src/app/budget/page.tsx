@@ -167,7 +167,7 @@ export default async function BudgetPage({
           </Card>
         )}
 
-        <Card className="p-0 overflow-hidden">
+        <Card className="p-0 overflow-x-auto">
           <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-line">
             <h2 className="font-semibold">Spending</h2>
             <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export default async function BudgetPage({
           </table>
         </Card>
 
-        <Card className="p-0 overflow-hidden mt-6">
+        <Card className="p-0 overflow-x-auto mt-6">
           <div className="px-4 py-3 border-b border-line">
             <h2 className="font-semibold">Income</h2>
           </div>

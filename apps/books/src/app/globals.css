@@ -97,3 +97,35 @@ body {
   border-radius: 999px;
   border: 3px solid theme("colors.paper");
 }
+
+
+/* --- The shell -----------------------------------------------------------
+   Below `lg` the sidebar is a drawer over the page, so the page has no inset
+   and instead clears the fixed top bar. From `lg` it is a column beside the
+   page, and the inset follows whether it is collapsed — set as a data
+   attribute on <html> by Sidebar.tsx, because `main` is server-rendered and
+   cannot read that state. */
+.app-main {
+  padding-top: 3.5rem;
+  padding-left: 0;
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    padding-top: 0;
+    padding-left: 15rem;
+    transition: padding-left 200ms ease;
+  }
+  html[data-sidebar="collapsed"] .app-main {
+    padding-left: 4rem;
+  }
+}
+
+/* A wide table on a narrow screen scrolls sideways rather than squeezing its
+   columns into unreadable slivers or pushing the whole page wider than the
+   viewport. */
+@media (max-width: 640px) {
+  .card table {
+    min-width: 34rem;
+  }
+}

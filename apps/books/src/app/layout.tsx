@@ -83,8 +83,11 @@ export default async function RootLayout({
           switchTenant={switchTenant}
           logout={logout}
         />
-        <main className="pl-60 min-h-screen">
-          <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
+        {/* The left inset is a CSS variable rather than a Tailwind class,
+            because it depends on whether the sidebar is collapsed and that
+            lives in a client component this server one cannot see. */}
+        <main className="app-main min-h-screen">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
         </main>
       </body>
     </html>

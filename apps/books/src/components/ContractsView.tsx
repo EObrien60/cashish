@@ -147,7 +147,7 @@ export function ContractsView({
           hint="A contract records what you agreed with a customer — the term, the value, the terms and the signed copy — and totals everything invoiced against it."
         />
       ) : (
-        <Card className="p-0 overflow-hidden">
+        <Card className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-ink-soft bg-black/[0.02]">
