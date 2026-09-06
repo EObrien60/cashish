@@ -27,6 +27,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@vercel/blob": "^2.8.0",
     "drizzle-orm": "^0.38.4",
+    "exceljs": "^4.4.0",
     "jose": "^6.2.10",
     "next": "^15.5.23",
     "papaparse": "^5.4.1",

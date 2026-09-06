@@ -49,6 +49,7 @@ const SECTIONS: {
     label: "Reporting",
     items: [
       { href: "/reports", label: "Reports", icon: IconReport },
+      { href: "/reports/cashflow", label: "Cash flow", icon: IconReport },
       { href: "/vat", label: "VAT return", icon: IconVat },
     ],
   },
