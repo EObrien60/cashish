@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Transaction, Category, VatRate } from "@cashish/core/db";
 import { moneySigned, fmtDate, money } from "@/lib/format";
@@ -36,7 +36,17 @@ type Props = {
   people?: { id: string; name: string }[];
   /** Suppliers, for attributing a payment to one of them. */
   vendors?: { id: string; name: string }[];
-  initialFilter?: string;
+  /** What the server filtered by; these live in the URL, not in this component. */
+  filters: {
+    search: string;
+    direction: "all" | "in" | "out";
+    uncategorized: boolean;
+    tab: "active" | "excluded";
+  };
+  /** Count and totals for the WHOLE filtered set, not just the page of it below. */
+  summary: { count: number; inSum: number; outSum: number };
+  counts: { included: number; excluded: number; uncategorised: number };
+  pageSize: number;
 };
 
 export function TransactionsView({
@@ -46,21 +56,49 @@ export function TransactionsView({
   receiptCounts,
   people = [],
   vendors = [],
-  initialFilter,
+  filters,
+  summary: totals,
+  counts,
+  pageSize,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [search, setSearch] = useState("");
-  const [direction, setDirection] = useState<"all" | "in" | "out">("all");
-  const [onlyUncat, setOnlyUncat] = useState(initialFilter === "uncategorized");
-  // Excluded transactions live in their own tab rather than cluttering the ledger.
-  const [tab, setTab] = useState<"active" | "excluded">("active");
+  // Filtering is done by Postgres and carried in the URL, so a filtered ledger
+  // can be linked to and — the reason it moved — so the page only ever holds
+  // the rows it is showing. The search box keeps local state purely so typing
+  // feels immediate; it is debounced into the URL.
+  const [search, setSearch] = useState(filters.search);
+  const direction = filters.direction;
+  const onlyUncat = filters.uncategorized;
+  const tab = filters.tab;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
   const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const params = new URLSearchParams(window.location.search);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") params.delete(k);
+        else params.set(k, v);
+      }
+      // Any change of filter starts the window again; keeping a raised limit
+      // would quietly load five thousand rows of whatever you switched to.
+      if (!("limit" in patch)) params.delete("limit");
+      startTransition(() => router.replace(`/transactions?${params.toString()}`, { scroll: false }));
+    },
+    [router],
+  );
+
+  // Debounced so a search does not fire a request per keystroke.
+  useEffect(() => {
+    if (search === filters.search) return;
+    const t = setTimeout(() => setParams({ q: search || null }), 300);
+    return () => clearTimeout(t);
+  }, [search, filters.search, setParams]);
 
   const catMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -71,34 +109,36 @@ export function TransactionsView({
     [vatRates],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return transactions.filter((t) => {
-      if (tab === "active" ? t.excluded : !t.excluded) return false;
-      if (direction === "in" && t.amount < 0) return false;
-      if (direction === "out" && t.amount >= 0) return false;
-      if (onlyUncat && t.categoryId) return false;
-      if (q) {
-        const hay = `${t.description} ${t.reference} ${t.payer}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [transactions, search, direction, onlyUncat, tab]);
+  // The server already applied every filter; this is that page of rows.
+  const filtered = transactions;
 
-  const totals = useMemo(() => {
-    let inSum = 0,
-      outSum = 0;
-    for (const t of filtered) {
-      if (t.amount >= 0) inSum += t.amount;
-      else outSum += Math.abs(t.amount);
-    }
-    return { inSum, outSum, net: inSum - outSum };
-  }, [filtered]);
+  const shown = filtered;
+
+  // Vercel refuses a request body over 4.5 MB before it reaches the app, so a
+  // bigger file can only ever fail — and it fails as a 500 with nothing useful
+  // in it. Saying so here costs one comparison and turns a mystery into an
+  // instruction.
+  const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      setSummary({
+        batch: "",
+        parsed: 0,
+        inserted: 0,
+        duplicates: 0,
+        autoCategorized: 0,
+        errors: [
+          `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB, and the limit is 4 MB. ` +
+            "Export a shorter date range from Revolut and import it in a couple of goes — " +
+            "re-importing an overlapping period is safe.",
+        ],
+      });
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     setImporting(true);
     setSummary(null);
     const fd = new FormData();
@@ -200,9 +240,9 @@ export function TransactionsView({
     });
   }
 
-  const activeTx = transactions.filter((t) => !t.excluded);
-  const excludedCount = transactions.length - activeTx.length;
-  const uncatCount = activeTx.filter((t) => !t.categoryId).length;
+  // From the server. Counting the rows on this page would under-report every
+  // label the moment a ledger is bigger than one page.
+  const { included: activeCount, excluded: excludedCount, uncategorised: uncatCount } = counts;
 
   return (
     <div>
@@ -282,7 +322,7 @@ export function TransactionsView({
           {(["all", "in", "out"] as const).map((d) => (
             <button
               key={d}
-              onClick={() => setDirection(d)}
+              onClick={() => setParams({ dir: d === "all" ? null : d })}
               className={`rounded-md px-3 py-1.5 font-medium capitalize transition-colors ${
                 direction === d
                   ? "bg-brand text-white"
@@ -294,7 +334,7 @@ export function TransactionsView({
           ))}
         </div>
         <button
-          onClick={() => setOnlyUncat((v) => !v)}
+          onClick={() => setParams({ filter: onlyUncat ? null : "uncategorized" })}
           className={`btn ${onlyUncat ? "btn-primary" : "btn-outline"}`}
         >
           Uncategorised {uncatCount > 0 && `(${uncatCount})`}
@@ -317,14 +357,14 @@ export function TransactionsView({
       {/* Ledger / excluded */}
       <div className="mb-3 flex items-center gap-1 border-b border-line">
         {([
-          ["active", "Ledger", activeTx.length],
+          ["active", "Ledger", activeCount],
           ["excluded", "Excluded", excludedCount],
         ] as const).map(([key, label, n]) => (
           <button
             key={key}
             onClick={() => {
-              setTab(key);
               setSelected(new Set());
+              setParams({ tab: key === "active" ? null : key });
             }}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
               tab === key
@@ -423,7 +463,7 @@ export function TransactionsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((t) => {
+                {shown.map((t) => {
                   const cat = t.categoryId ? catMap.get(t.categoryId) : null;
                   const isOut = t.amount < 0;
                   return (
@@ -596,9 +636,20 @@ export function TransactionsView({
                 <tr>
                   <td className="td" colSpan={4}>
                     <span className="text-sm text-ink-faint">
-                      {filtered.length} transaction
-                      {filtered.length === 1 ? "" : "s"}
+                      {shown.length < totals.count
+                        ? `Showing ${shown.length} of ${totals.count} transactions`
+                        : `${totals.count} transaction${totals.count === 1 ? "" : "s"}`}
                     </span>
+                    {shown.length < totals.count && (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        className="ml-3 text-sm text-brand underline disabled:opacity-50"
+                        onClick={() => setParams({ limit: String(shown.length + pageSize * 4) })}
+                      >
+                        {pending ? "Loading…" : "Show more"}
+                      </button>
+                    )}
                   </td>
                   <td className="td text-right text-xs text-ink-faint">
                     <div className="text-money-in">in {money(totals.inSum)}</div>
@@ -607,7 +658,7 @@ export function TransactionsView({
                     </div>
                   </td>
                   <td className="td text-right tabular font-bold">
-                    {moneySigned(totals.net)}
+                    {moneySigned(totals.inSum - totals.outSum)}
                   </td>
                   <td className="td" />
                 </tr>

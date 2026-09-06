@@ -115,9 +115,15 @@ export type TxFilter = {
    * statement, where every line has to be accounted for.
    */
   excluded?: "hide" | "only" | "all";
+  /**
+   * Rows to return, newest first. The ledger page is the reason this exists: a
+   * three-year personal statement is ten thousand rows, and serialising all of
+   * them into a page costs several megabytes before anybody has looked at one.
+   */
+  limit?: number;
 };
 
-export async function listTransactions(filter: TxFilter = {}) {
+function conditionsFor(filter: TxFilter): SQL[] {
   const conds: SQL[] = [ofTenant()];
   // Default is hide: a caller that says nothing must never be handed excluded rows.
   const excluded = filter.excluded ?? "hide";
@@ -145,11 +151,46 @@ export async function listTransactions(filter: TxFilter = {}) {
     );
   }
 
-  return db
+  return conds;
+}
+
+export async function listTransactions(filter: TxFilter = {}) {
+  const query = db
     .select()
     .from(transactions)
-    .where(and(...conds))
+    .where(and(...conditionsFor(filter)))
     .orderBy(desc(transactions.bookedDate), desc(transactions.createdAt));
+
+  return filter.limit ? query.limit(filter.limit) : query;
+}
+
+/**
+ * Count and totals for a filter, over ALL of it rather than a page of it.
+ *
+ * Once the ledger stopped loading every row, a footer that added up what had
+ * been loaded would quietly report the wrong total for anyone with more
+ * transactions than fit on a page — a number that looks authoritative and is
+ * not. This does the arithmetic in Postgres, where the whole set is.
+ */
+export async function summariseTransactions(
+  filter: TxFilter = {},
+): Promise<{ count: number; inSum: number; outSum: number }> {
+  const row = first(
+    await db
+      .select({
+        count: sql<number>`count(*)`,
+        inSum: sql<number>`coalesce(sum(case when ${transactions.amount} >= 0 then ${transactions.amount} else 0 end), 0)`,
+        outSum: sql<number>`coalesce(sum(case when ${transactions.amount} < 0 then -${transactions.amount} else 0 end), 0)`,
+      })
+      .from(transactions)
+      .where(and(...conditionsFor({ ...filter, limit: undefined })))
+      .limit(1),
+  );
+  return {
+    count: Number(row?.count ?? 0),
+    inSum: Number(row?.inSum ?? 0),
+    outSum: Number(row?.outSum ?? 0),
+  };
 }
 
 export async function updateTransaction(

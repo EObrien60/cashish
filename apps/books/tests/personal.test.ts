@@ -12,7 +12,11 @@ import { eq } from "drizzle-orm";
 import { asTenant, makeTenant, closePool } from "./harness";
 import { db, schema } from "@cashish/core/db";
 import { parseStatementCsv } from "../src/lib/import";
-import { importTransactions } from "../src/lib/transactions";
+import {
+  importTransactions,
+  listTransactions,
+  summariseTransactions,
+} from "../src/lib/transactions";
 import { budgetForMonth, setBudget, copyBudget, shiftMonth } from "../src/lib/budgets";
 import { createTenant } from "../src/db/seed";
 import { uid } from "../src/lib/id";
@@ -253,4 +257,33 @@ test("existing books are untouched: the default is a business in Ireland", async
   assert.equal(row.kind, "business");
   assert.equal(row.region, "IE");
   assert.equal(row.currency, "EUR");
+});
+
+test("the ledger pages, and its totals cover the whole set rather than the page", async () => {
+  await reset();
+  await asTenant(tenant, async () => {
+    const rows = Array.from({ length: 250 }, (_, i) => ({
+      id: uid(),
+      tenantId: tenant,
+      bookedDate: `2026-08-${String((i % 28) + 1).padStart(2, "0")}`,
+      amount: i % 2 === 0 ? -10 : 25,
+      description: i % 5 === 0 ? "Tesco Galway" : "Something else",
+      importBatch: "test",
+    }));
+    for (let i = 0; i < rows.length; i += 100) {
+      await db.insert(schema.transactions).values(rows.slice(i, i + 100));
+    }
+  });
+
+  const page = await asTenant(tenant, () => listTransactions({ limit: 200 }));
+  assert.equal(page.length, 200, "a page is capped");
+
+  const all = await asTenant(tenant, () => summariseTransactions({}));
+  assert.equal(all.count, 250, "the count is of everything, not of the page");
+  assert.equal(all.inSum, 125 * 25);
+  assert.equal(all.outSum, 125 * 10);
+
+  // Filtering happens in Postgres, so a search reaches past the first page.
+  const hits = await asTenant(tenant, () => summariseTransactions({ search: "Tesco" }));
+  assert.equal(hits.count, 50);
 });
