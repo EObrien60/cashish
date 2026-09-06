@@ -9,6 +9,7 @@ import {
 import { listPeople, fullName } from "@/lib/people";
 import { listVendors } from "@/lib/vendors";
 import { receiptCounts } from "@/lib/receipts";
+import { accountBalances } from "@/lib/accounts";
 import { PageHeader } from "@/components/ui";
 import { TransactionsView } from "@/components/TransactionsView";
 
@@ -29,6 +30,7 @@ export default async function TransactionsPage({
     dir?: string;
     tab?: string;
     limit?: string;
+    account?: string;
   }>;
 }) {
   return withTenant(async () => {
@@ -40,11 +42,13 @@ export default async function TransactionsPage({
     const direction = sp.dir === "in" || sp.dir === "out" ? sp.dir : undefined;
     const tab = sp.tab === "excluded" ? "excluded" : "active";
     const uncategorized = sp.filter === "uncategorized";
+    const accountId = sp.account?.trim() || undefined;
 
     const filter: TxFilter = {
       ...(search ? { search } : {}),
       ...(direction ? { direction } : {}),
       ...(uncategorized ? { uncategorized: true } : {}),
+      ...(accountId ? { accountId } : {}),
       excluded: tab === "excluded" ? "only" : "hide",
     };
 
@@ -58,6 +62,8 @@ export default async function TransactionsPage({
         listPeople({ includeLeavers: true }),
         listVendors(),
       ]);
+
+    const accounts = await accountBalances(true);
 
     const receipts = await receiptCounts(transactions.map((t) => t.id));
 
@@ -74,7 +80,8 @@ export default async function TransactionsPage({
           receiptCounts={receipts}
           people={people.map((p) => ({ id: p.id, name: fullName(p) }))}
           vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
-          filters={{ search, direction: direction ?? "all", uncategorized, tab }}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency }))}
+          filters={{ search, direction: direction ?? "all", uncategorized, tab, accountId: accountId ?? "" }}
           summary={summary}
           counts={counts}
           pageSize={PAGE}

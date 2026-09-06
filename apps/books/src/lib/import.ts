@@ -24,6 +24,11 @@ export type ParsedRow = Omit<
   | "employeeId"
   | "vendorId"
   | "customerId"
+  // A statement row names its account as text; which account row that is gets
+  // resolved on the way in, and a transfer is recognised after that.
+  | "accountId"
+  | "transferAccountId"
+  | "transferPeerId"
 > & {
   categoryId: null;
   vatRateId: null;

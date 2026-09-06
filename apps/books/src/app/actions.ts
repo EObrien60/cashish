@@ -1,6 +1,9 @@
 "use server";
 
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
+import { updateAccount, assignUnassigned } from "@/lib/accounts";
+import { detectTransfers, pairTransfers, markTransfer, unmarkTransfer } from "@/lib/transfers";
+import type { AccountKind } from "@cashish/core/db";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db, first, schema, tenantId, type Payslip } from "@cashish/core/db";
@@ -544,6 +547,54 @@ export async function deletePayRunAction(id: string) {
 }
 
 // ---- Settings -------------------------------------------------------------
+
+// --- Accounts ---------------------------------------------------------------
+
+export async function updateAccountAction(
+  id: string,
+  patch: { name?: string; kind?: AccountKind; currency?: string; openingBalance?: number; archived?: boolean },
+) {
+  return withCapability("books:write", async () => {
+    await updateAccount(id, patch);
+    revalidatePath("/accounts");
+    revalidatePath("/transactions");
+  });
+}
+
+export async function assignUnassignedAction(accountId: string) {
+  return withCapability("books:write", async () => {
+    const n = await assignUnassigned(accountId);
+    revalidatePath("/accounts");
+    revalidatePath("/transactions");
+    return n;
+  });
+}
+
+/** Re-runs transfer detection over the whole ledger, not just one import. */
+export async function detectTransfersAction() {
+  return withCapability("books:write", async () => {
+    const detected = await detectTransfers();
+    const paired = await pairTransfers();
+    revalidatePath("/accounts");
+    revalidatePath("/transactions");
+    return { detected: detected.detected, paired, accountsCreated: detected.accountsCreated };
+  });
+}
+
+export async function markTransferAction(id: string, counterpartAccountId: string) {
+  return withCapability("books:write", async () => {
+    await markTransfer(id, counterpartAccountId);
+    await pairTransfers();
+    revalidatePath("/transactions");
+  });
+}
+
+export async function unmarkTransferAction(id: string) {
+  return withCapability("books:write", async () => {
+    await unmarkTransfer(id);
+    revalidatePath("/transactions");
+  });
+}
 
 // --- Budgets (personal books) ----------------------------------------------
 
