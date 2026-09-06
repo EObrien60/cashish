@@ -149,9 +149,9 @@ test("with no credentials the features decline rather than throw", async () => {
     // Both entry points must degrade, because a set of books that stops working
     // when a model is unreachable is a bad trade for some commentary.
     const { generateReport } = await import("../src/lib/ai-report");
-    const { proposeRules } = await import("../src/lib/ai-rules");
+    const { proposeRulesForAccount } = await import("../src/lib/ai-rules");
     const r1 = await asTenant(tenant, () => generateReport({ from: "2026-08-01", to: "2026-08-31" }));
-    const r2 = await asTenant(tenant, () => proposeRules());
+    const r2 = await asTenant(tenant, () => proposeRulesForAccount({ accountId: null }));
     assert.equal(r1.ok, false);
     assert.equal(r2.ok, false);
     if (!r1.ok) assert.match(r1.reason, /credentials/i);
@@ -171,4 +171,33 @@ test("a gateway failure is turned into something a page can say", async () => {
   assert.match(describeFailure(make(429)).reason, /too many/i);
   assert.match(describeFailure(make(503)).reason, /unavailable/i);
   assert.equal(describeFailure(new Error("boom")).reason, "boom");
+});
+
+test("rule proposal is scoped to one account and measures its own suggestions", async () => {
+  // The scaling case: an account with many merchants, and a second account whose
+  // spending must not appear in the first account's proposals.
+  await reset();
+  const { ensureAccount } = await import("../src/lib/accounts");
+  const { accountsNeedingRules } = await import("../src/lib/ai-rules");
+
+  const card = await asTenant(tenant, () => ensureAccount({ name: "Card", kind: "credit_card" }));
+  const current = await asTenant(tenant, () => ensureAccount({ name: "Current" }));
+
+  await asTenant(tenant, async () => {
+    await db.insert(schema.transactions).values([
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-01", amount: -45, description: "Lidl", accountId: card.id, importBatch: "t" },
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-08", amount: -46, description: "Lidl 4471", accountId: card.id, importBatch: "t" },
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-09", amount: -10, description: "Easytrip", accountId: card.id, importBatch: "t" },
+      { id: uid(), tenantId: tenant, bookedDate: "2026-08-02", amount: -900, description: "TD SYNNEX", accountId: current.id, importBatch: "t" },
+    ]);
+  });
+
+  const needing = await asTenant(tenant, () => accountsNeedingRules());
+  assert.equal(needing.length, 2, "both accounts have uncategorised spending");
+  const cardRow = needing.find((a) => a.name === "Card");
+  assert.equal(cardRow?.uncategorised, 3);
+  assert.equal(cardRow?.amount, 101, "45 + 46 + 10, and not the other account's 900");
+
+  // Sorted by what is at stake, so the biggest mess is offered first.
+  assert.equal(needing[0].name, "Current");
 });

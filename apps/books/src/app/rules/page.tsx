@@ -7,6 +7,7 @@ import { listRules } from "@/lib/rules";
 import { PageHeader } from "@/components/ui";
 import { RuleProposals } from "@/components/RuleProposals";
 import { aiIsConfigured } from "@/lib/ai";
+import { accountsNeedingRules } from "@/lib/ai-rules";
 import { RulesView } from "@/components/RulesView";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function RulesPage() {
   return withTenant(async () => {
     const rules = await listRules();
+    const ruleAccounts = await accountsNeedingRules();
     const [categories, vatRates, uncategorizedCount, customers, vendors, people] =
       await Promise.all([
         listCategories(),
@@ -31,7 +33,7 @@ export default async function RulesPage() {
           subtitle="Teach cashish to file transactions automatically."
         />
         <div className="mb-6">
-          <RuleProposals aiAvailable={aiIsConfigured()} />
+          <RuleProposals aiAvailable={aiIsConfigured()} accounts={ruleAccounts} />
         </div>
         <RulesView
           rules={rules}

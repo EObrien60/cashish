@@ -1,49 +1,39 @@
-import { generateObject } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
+import { and, eq, sql } from "drizzle-orm";
+import { db, schema, tenantId } from "@cashish/core/db";
 import { REPORT_MODEL, aiIsConfigured, describeFailure, gatewayOptions, type AiResult } from "./ai";
-import { uncategorisedByMerchant } from "./insights";
+import { merchantLabel } from "./insights";
 import { listCategories } from "./lookups";
 import { ruleMatches, listRules } from "./rules";
-import { listTransactions } from "./transactions";
-import { tenantId } from "@cashish/core/db";
+import { notExcluded } from "./transactions";
 import { round2 } from "./format";
 
-// ---------------------------------------------------------------------------
-// Proposing rules.
-//
-// The model is good at one thing here that no amount of pattern matching is:
-// knowing that Lidl, Dunnes Stores and Asia Market are all groceries, that
-// Circle K is fuel, and that Easytrip is a toll. That is world knowledge, not a
-// property of the data.
-//
-// It is bad at the other half — knowing how many transactions a rule would
-// catch and what that would cost — so it does not do that half. Every proposal
-// is run through the SAME matcher the real rules use, against the real ledger,
-// and the counts shown to the person are measured, not claimed.
-//
-// And nothing is applied. A proposal is a suggestion with its consequences
-// spelled out; accepting one is a click, and it goes through the ordinary
-// saveRule path. A model silently recategorising somebody's books would be
-// indefensible even when it is right.
-// ---------------------------------------------------------------------------
+const { transactions } = schema;
 
-const ProposalSchema = z.object({
-  proposals: z
-    .array(
-      z.object({
-        name: z.string().describe("What a person would call this rule, e.g. 'Groceries — Lidl'."),
-        matchValue: z
-          .string()
-          .describe(
-            "The distinctive part of the description to match on. Short and unambiguous: 'Lidl', not 'Lidl 4471 Galway'.",
-          ),
-        direction: z.enum(["in", "out", "any"]),
-        categoryName: z.string().describe("Must be exactly one of the supplied category names."),
-        reason: z.string().describe("One short sentence: why this merchant is that category."),
-      }),
-    )
-    .max(15),
-});
+// ---------------------------------------------------------------------------
+// Proposing rules, over a ledger too big to hand to a model.
+//
+// Twelve thousand transactions is the shape of a real book, and it changes the
+// design entirely. Everything expensive is done in Postgres and in this file:
+// the rows are clustered into merchants, the merchants are ranked, and the
+// model is shown a page of them at a time. It never sees a transaction.
+//
+// Within a batch it gets TOOLS rather than a single answer, because the useful
+// question is often "what else looks like this?" — "Circle K" and "Circle K Gas
+// Station" are one merchant, "SPAR Food & Fuel" might be either, and the only
+// way to tell is to look. So it can search, it can dry-run a rule and see
+// exactly what that rule would catch, and it proposes only once it has.
+//
+// Scoped to ONE ACCOUNT at a time, because a rule that makes sense on a
+// personal credit card is often wrong on a business current account: the same
+// "Circle K" is fuel for one and a client lunch for the other. Proposing across
+// a whole book mixes them.
+//
+// And every number the person sees is measured here, by the same matcher the
+// saved rules use. The model supplies world knowledge — that Lidl is groceries
+// and Easytrip is a toll — and nothing else.
+// ---------------------------------------------------------------------------
 
 export type RuleProposal = {
   name: string;
@@ -52,41 +42,146 @@ export type RuleProposal = {
   categoryId: string;
   categoryName: string;
   reason: string;
-  /** Measured against the real ledger, not claimed by the model. */
+  accountId: string | null;
   wouldMatch: number;
   wouldMatchUncategorised: number;
   amount: number;
-  /** Transactions another rule already claims — accepting this may reclassify them. */
   alreadyClaimed: number;
   sample: string[];
 };
 
-export type ProposalResult = AiResult<RuleProposal[]>;
+export type ProposalRun = {
+  proposals: RuleProposal[];
+  /** Merchant clusters looked at, and how many are left for a later run. */
+  examined: number;
+  remaining: number;
+  batches: number;
+  accountName: string;
+};
 
-const SYSTEM = `You propose categorisation rules for a bookkeeping app.
+export type ProposalResult = AiResult<ProposalRun>;
 
-You are given merchants that appear in a ledger with no category, and the exact
-list of categories available. For each merchant worth a rule, propose one.
+type Cluster = {
+  label: string;
+  count: number;
+  total: number;
+  months: number;
+  sample: string[];
+};
 
-Rules:
-- categoryName must be copied exactly from the supplied list.
-- matchValue must be the shortest distinctive substring of the merchant name.
-  It is matched case-insensitively against the transaction description.
-- Propose a rule for every merchant you recognise. A supermarket, a fuel
-  station, a toll operator, a well-known shop or restaurant chain — these are
-  recognisable and worth a rule even from a single transaction, because they
-  will recur.
-- Skip only what you genuinely cannot identify, or what is obviously one-off.
-- Direction: "out" for spending, "in" for income. Use "any" only when a merchant
-  genuinely does both, like a refund-prone shop.
-- Never propose a rule matching a person's name unless the category is clearly
-  wages — paying a person is not automatically payroll.
+const ofAccount = (accountId: string | null) =>
+  accountId
+    ? eq(transactions.accountId, accountId)
+    : sql`${transactions.accountId} is null`;
 
-Returning an empty list is only correct when nothing in the list is
-identifiable. It is not a way to be safe: an unproposed rule leaves the
-spending uncategorised, which is its own kind of wrong.`;
+/**
+ * Every uncategorised merchant on one account, biggest first.
+ *
+ * Done in SQL over the whole account rather than by pulling rows into memory,
+ * because "the whole account" is the twelve thousand.
+ */
+async function clustersFor(accountId: string | null): Promise<Cluster[]> {
+  const rows = await db
+    .select({
+      description: transactions.description,
+      amount: transactions.amount,
+      bookedDate: transactions.bookedDate,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.tenantId, tenantId()),
+        notExcluded(),
+        sql`${transactions.categoryId} is null`,
+        ofAccount(accountId),
+      ),
+    );
 
-export async function proposeRules(): Promise<ProposalResult> {
+  const map = new Map<string, { count: number; total: number; months: Set<string>; sample: string[] }>();
+  for (const r of rows) {
+    const label = merchantLabel(r.description ?? "");
+    const c = map.get(label) ?? { count: 0, total: 0, months: new Set<string>(), sample: [] };
+    c.count += 1;
+    c.total += Math.abs(r.amount);
+    c.months.add(r.bookedDate.slice(0, 7));
+    if (c.sample.length < 3 && r.description) c.sample.push(r.description);
+    map.set(label, c);
+  }
+
+  return [...map.entries()]
+    .map(([label, c]) => ({
+      label,
+      count: c.count,
+      total: round2(c.total),
+      months: c.months.size,
+      sample: c.sample,
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/** What a candidate rule would actually catch on this account. Never guessed. */
+async function measure(
+  accountId: string | null,
+  matchValue: string,
+  direction: "in" | "out" | "any",
+) {
+  const rows = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.tenantId, tenantId()), notExcluded(), ofAccount(accountId)));
+  const rules = await listRules();
+
+  const candidate = {
+    enabled: true,
+    matchField: "description",
+    matchType: "contains",
+    matchValue,
+    direction,
+  } as unknown as Parameters<typeof ruleMatches>[0];
+
+  const matched = rows.filter((t) => ruleMatches(candidate, t));
+  return {
+    wouldMatch: matched.length,
+    wouldMatchUncategorised: matched.filter((t) => !t.categoryId).length,
+    amount: round2(matched.reduce((acc, t) => acc + Math.abs(t.amount), 0)),
+    alreadyClaimed: matched.filter((t) => rules.some((r) => ruleMatches(r, t))).length,
+    sample: matched.slice(0, 3).map((t) => t.description ?? ""),
+  };
+}
+
+const SYSTEM = `You write categorisation rules for one bank account in a bookkeeping app.
+
+You are shown a batch of merchants that appear on this account with no category,
+largest spend first. For each one you recognise, add a rule.
+
+You have tools. Use them rather than assuming:
+- findSimilar, when a name is ambiguous or you suspect variants of it exist
+  elsewhere on the account ("Circle K" vs "Circle K Gas Station").
+- checkRule, to see exactly what a match value would catch before proposing it.
+  A match value that is too broad will catch things it should not; this is how
+  you find that out.
+- proposeRule records a rule and returns what it will catch. It rejects a
+  category that does not exist and a match value that catches nothing.
+
+Match values are the shortest distinctive substring — "Lidl", not
+"Lidl 4471 Galway". They are matched case-insensitively on the description.
+
+Recognisable merchants are worth a rule even from one transaction, because they
+recur: supermarkets, fuel, tolls, chains, utilities, well-known software.
+
+Do NOT propose rules for:
+- transfers between someone's own accounts ("To EUR", "Transfer to Savings") —
+  those are not spending and a rule would file them as if they were;
+- a person's name, unless the category is clearly wages;
+- anything you cannot identify. Say nothing rather than guess.
+
+When you have been through the batch, stop and give a one-line summary.`;
+
+export async function proposeRulesForAccount(input: {
+  accountId: string | null;
+  batchSize?: number;
+  maxBatches?: number;
+}): Promise<ProposalResult> {
   if (!aiIsConfigured()) {
     return {
       ok: false,
@@ -95,87 +190,180 @@ export async function proposeRules(): Promise<ProposalResult> {
     };
   }
 
-  const [merchants, categories, existing] = await Promise.all([
-    uncategorisedByMerchant(30),
-    listCategories(),
-    listRules(),
-  ]);
+  const tid = tenantId();
+  const [account] = input.accountId
+    ? await db
+        .select()
+        .from(schema.accounts)
+        .where(and(eq(schema.accounts.tenantId, tid), eq(schema.accounts.id, input.accountId)))
+    : [];
+  const accountName = account?.name ?? "Transactions with no account";
 
-  if (merchants.length === 0) {
-    return { ok: false, reason: "Nothing is uncategorised — there is nothing to propose." };
+  const clusters = await clustersFor(input.accountId);
+  if (clusters.length === 0) {
+    return { ok: false, reason: `Nothing is uncategorised on ${accountName}.` };
   }
 
-  let object: z.infer<typeof ProposalSchema>;
-  try {
-    const result = await generateObject({
-      model: REPORT_MODEL,
-      schema: ProposalSchema,
-      system: SYSTEM,
-      prompt: [
-        "Uncategorised merchants (label, times seen, total spent, recurring):",
-        merchants
-          .map((m) => `- ${m.label} · ${m.count}× · ${m.total} · ${m.recurring ? "recurring" : "one-off"}`)
-          .join("\n"),
-        "",
-        "Categories available:",
-        categories.map((c) => `- ${c.name} (${c.kind})`).join("\n"),
-        "",
-        "Rules that already exist, so do not duplicate them:",
-        existing.map((r) => `- ${r.matchValue}`).join("\n") || "(none)",
-      ].join("\n"),
-      providerOptions: gatewayOptions("rule-proposals", tenantId()),
-    });
-    object = result.object;
-  } catch (error) {
-    return describeFailure(error);
-  }
-
-  // Everything from here is measured. The model's arithmetic is never trusted,
-  // and neither is its category name — one that does not exist is dropped
-  // rather than guessed at.
+  const categories = await listCategories();
   const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
-  const allRows = await listTransactions({ excluded: "hide" });
-  const rules = await listRules();
+  const existing = await listRules();
+
+  const batchSize = Math.min(40, Math.max(5, input.batchSize ?? 20));
+  const maxBatches = Math.min(10, Math.max(1, input.maxBatches ?? 3));
 
   const proposals: RuleProposal[] = [];
-  for (const p of object.proposals) {
-    const category = byName.get(p.categoryName.trim().toLowerCase());
-    if (!category) continue;
-    if (!p.matchValue.trim()) continue;
+  const seen = new Set<string>();
+  let examined = 0;
+  let batches = 0;
 
-    const candidate = {
-      id: "proposal",
-      tenantId: tenantId(),
-      name: p.name,
-      matchField: "description" as const,
-      matchType: "contains" as const,
-      matchValue: p.matchValue.trim(),
-      direction: p.direction,
-      enabled: true,
+  for (let i = 0; i < clusters.length && batches < maxBatches; i += batchSize) {
+    const batch = clusters.slice(i, i + batchSize);
+    batches += 1;
+    examined += batch.length;
+
+    const tools = {
+      findSimilar: tool({
+        description:
+          "Search this account's transactions for descriptions containing some text. Use it to find variants of a merchant name, or to check what an ambiguous name really is.",
+        inputSchema: z.object({
+          text: z.string().describe("Substring to look for, case-insensitive."),
+        }),
+        execute: async ({ text }) => {
+          const found = await measure(input.accountId, text, "any");
+          return {
+            matches: found.wouldMatch,
+            uncategorised: found.wouldMatchUncategorised,
+            totalAmount: found.amount,
+            examples: found.sample,
+          };
+        },
+      }),
+      checkRule: tool({
+        description:
+          "Dry run: what would a rule with this match value catch on this account? Nothing is saved.",
+        inputSchema: z.object({
+          matchValue: z.string(),
+          direction: z.enum(["in", "out", "any"]),
+        }),
+        execute: async ({ matchValue, direction }) => measure(input.accountId, matchValue, direction),
+      }),
+      proposeRule: tool({
+        description:
+          "Record a proposed rule. Returns what it would catch, or an error explaining why it was rejected.",
+        inputSchema: z.object({
+          name: z.string(),
+          matchValue: z.string(),
+          direction: z.enum(["in", "out", "any"]),
+          categoryName: z.string(),
+          reason: z.string(),
+        }),
+        execute: async (p) => {
+          const category = byName.get(p.categoryName.trim().toLowerCase());
+          if (!category) {
+            return { error: `No category called "${p.categoryName}". Use one from the list.` };
+          }
+          const value = p.matchValue.trim();
+          if (!value) return { error: "matchValue is empty." };
+          if (seen.has(value.toLowerCase())) {
+            return { error: `Already proposed a rule matching "${value}".` };
+          }
+
+          const found = await measure(input.accountId, value, p.direction);
+          if (found.wouldMatch === 0) {
+            return { error: `"${value}" matches nothing on this account. Try findSimilar first.` };
+          }
+
+          seen.add(value.toLowerCase());
+          proposals.push({
+            name: p.name,
+            matchValue: value,
+            direction: p.direction,
+            categoryId: category.id,
+            categoryName: category.name,
+            reason: p.reason,
+            accountId: input.accountId,
+            ...found,
+          });
+          return { recorded: true, ...found };
+        },
+      }),
     };
 
-    const matched = allRows.filter((t) =>
-      ruleMatches(candidate as unknown as Parameters<typeof ruleMatches>[0], t),
-    );
-    if (matched.length === 0) continue;
-
-    proposals.push({
-      name: p.name,
-      matchValue: candidate.matchValue,
-      direction: p.direction,
-      categoryId: category.id,
-      categoryName: category.name,
-      reason: p.reason,
-      wouldMatch: matched.length,
-      wouldMatchUncategorised: matched.filter((t) => !t.categoryId).length,
-      amount: round2(matched.reduce((acc, t) => acc + Math.abs(t.amount), 0)),
-      alreadyClaimed: matched.filter((t) =>
-        rules.some((r) => ruleMatches(r, t)),
-      ).length,
-      sample: matched.slice(0, 3).map((t) => t.description ?? ""),
-    });
+    try {
+      await generateText({
+        model: REPORT_MODEL,
+        system: SYSTEM,
+        tools,
+        // Enough turns to look something up, check it and propose it, several
+        // times over — and a hard ceiling, because an agent with a budget is
+        // the only kind worth deploying.
+        stopWhen: stepCountIs(batch.length + 12),
+        prompt: [
+          `Account: ${accountName}`,
+          "",
+          "Uncategorised merchants on it (label · times seen · total · months active):",
+          batch
+            .map((c) => `- ${c.label} · ${c.count}× · ${c.total} · ${c.months} month(s)`)
+            .join("\n"),
+          "",
+          "Categories available (use these names exactly):",
+          categories.map((c) => `- ${c.name} (${c.kind})`).join("\n"),
+          "",
+          "Rules that already exist, so do not duplicate them:",
+          existing.map((r) => `- ${r.matchValue}`).join("\n") || "(none)",
+        ].join("\n"),
+        providerOptions: gatewayOptions("rule-proposals", tid),
+      });
+    } catch (error) {
+      // A batch failing part-way is not a reason to lose the batches that
+      // worked; report what was gathered and why it stopped.
+      if (proposals.length === 0) return describeFailure(error);
+      break;
+    }
   }
 
   proposals.sort((a, b) => b.amount - a.amount);
-  return { ok: true, value: proposals };
+  return {
+    ok: true,
+    value: {
+      proposals,
+      examined,
+      remaining: Math.max(0, clusters.length - examined),
+      batches,
+      accountName,
+    },
+  };
+}
+
+/** Accounts that have something to propose rules for, biggest first. */
+export async function accountsNeedingRules(): Promise<
+  { id: string | null; name: string; uncategorised: number; amount: number }[]
+> {
+  const tid = tenantId();
+  const rows = await db
+    .select({
+      accountId: transactions.accountId,
+      n: sql<number>`count(*)`,
+      total: sql<number>`coalesce(sum(abs(${transactions.amount})), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(eq(transactions.tenantId, tid), notExcluded(), sql`${transactions.categoryId} is null`),
+    )
+    .groupBy(transactions.accountId);
+
+  const accounts = await db
+    .select()
+    .from(schema.accounts)
+    .where(eq(schema.accounts.tenantId, tid));
+  const nameOf = new Map(accounts.map((a) => [a.id, a.name]));
+
+  return rows
+    .map((r) => ({
+      id: r.accountId,
+      name: r.accountId ? (nameOf.get(r.accountId) ?? "Unknown account") : "No account",
+      uncategorised: Number(r.n),
+      amount: round2(Number(r.total)),
+    }))
+    .sort((a, b) => b.amount - a.amount);
 }

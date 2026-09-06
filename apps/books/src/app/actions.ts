@@ -2,7 +2,7 @@
 
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
 import { generateReport } from "@/lib/ai-report";
-import { proposeRules } from "@/lib/ai-rules";
+import { proposeRulesForAccount, accountsNeedingRules } from "@/lib/ai-rules";
 import {
   updateAccount,
   assignUnassigned,
@@ -610,8 +610,12 @@ export async function generateReportAction(from: string, to: string) {
   return withCapability("books:read", async () => generateReport({ from, to }));
 }
 
-export async function proposeRulesAction() {
-  return withCapability("books:read", async () => proposeRules());
+export async function proposeRulesAction(accountId: string | null) {
+  return withCapability("books:read", async () => proposeRulesForAccount({ accountId }));
+}
+
+export async function accountsNeedingRulesAction() {
+  return withCapability("books:read", async () => accountsNeedingRules());
 }
 
 /**
