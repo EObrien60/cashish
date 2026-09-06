@@ -8,6 +8,16 @@
  * suite, where every test file runs in its own process and each ensures the
  * schema. Without the lock they race on the migrations table and most of them
  * fail. With it, the first wins and the rest wait and then find nothing to do.
+ *
+ * The lock only works on a DIRECT connection, which is why this prefers
+ * DATABASE_URL_UNPOOLED. `pg_advisory_lock` is session-scoped, and a pooled
+ * endpoint hands each statement whichever backend is free — so the lock is
+ * taken on one connection and the migration runs on another, holding nothing.
+ * That is not theoretical: on 2026-09-06 a books deployment and an admin
+ * deployment of the same commit both migrated production at once and one died
+ * with `duplicate key value violates unique constraint
+ * "pg_type_typname_nsp_index"`, which is Postgres refusing a second concurrent
+ * CREATE TABLE of the same name.
  */
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
@@ -28,8 +38,21 @@ const LOCK_KEY = 8_142_539_071_004_311n;
  */
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../drizzle", import.meta.url));
 
+/**
+ * The connection the migrator should use.
+ *
+ * Direct first: see the note above about session advisory locks and pooled
+ * endpoints. Neon and the Vercel integration both provide an unpooled URL;
+ * locally there is only DATABASE_URL, which is direct anyway.
+ */
+export function migrationConnectionString(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return env.DATABASE_URL_UNPOOLED ?? env.POSTGRES_URL_NON_POOLING ?? env.DATABASE_URL;
+}
+
 export async function migrate(): Promise<void> {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = migrationConnectionString();
   if (!connectionString) throw new Error("DATABASE_URL is not set.");
 
   // This opens its own pool, so it does not inherit the preview guard in
