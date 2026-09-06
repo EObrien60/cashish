@@ -30,6 +30,17 @@ export type PlanCopy = {
 
 export const PLAN_COPY: PlanCopy[] = [
   {
+    code: "personal",
+    pitch: "Your own money, on the same ledger the businesses run on.",
+    includes: [
+      "Every account in one place — current, credit card, savings",
+      "A budget per category, against what you actually spent",
+      "Transfers between your own accounts are not counted as spending",
+      "Where it went, month by month, without a spreadsheet",
+      "Statements from any bank that exports a CSV",
+    ],
+  },
+  {
     code: "sole",
     pitch: "One business, one person, books that stay straight.",
     includes: [
@@ -72,8 +83,25 @@ export function seatLine(maxUsers: number | null): string {
     : `Up to ${maxUsers} people in this business.`;
 }
 
-export const FEATURES = [
+/**
+ * Who a feature is for.
+ *
+ * Tagged rather than duplicated into two lists, because most of cashish is the
+ * same product either way — the ledger does not care whose money it is. Only
+ * the trading half (invoices, VAT, payroll) and the budgeting half are actually
+ * exclusive, and saying so honestly is more persuasive than implying that a
+ * personal book is a second product.
+ */
+export type Audience = "both" | "business" | "personal";
+
+export const FEATURES: {
+  kicker: string;
+  title: string;
+  body: string;
+  for: Audience;
+}[] = [
   {
+    for: "both",
     kicker: "Import",
     title: "Your statement, understood",
     body:
@@ -82,6 +110,7 @@ export const FEATURES = [
       "nothing doubles up and nothing you have already categorised is touched.",
   },
   {
+    for: "both",
     kicker: "Rules",
     title: "Correct a rule, fix the history",
     body:
@@ -91,6 +120,7 @@ export const FEATURES = [
       "no rule has an opinion about is left alone.",
   },
   {
+    for: "business",
     kicker: "Reconcile",
     title: "Which invoice did that money pay?",
     body:
@@ -99,6 +129,7 @@ export const FEATURES = [
       "Money that arrived before an invoice existed is never offered as its payment.",
   },
   {
+    for: "business",
     kicker: "VAT",
     title: "Cash basis, the Irish way",
     body:
@@ -107,6 +138,7 @@ export const FEATURES = [
       "expenses that are still missing a rate called out rather than quietly omitted.",
   },
   {
+    for: "both",
     kicker: "Exclude",
     title: "A transfer is not an expense",
     body:
@@ -116,6 +148,7 @@ export const FEATURES = [
       "line for line.",
   },
   {
+    for: "both",
     kicker: "Agents",
     title: "Built to be driven by an AI",
     body:
@@ -123,9 +156,116 @@ export const FEATURES = [
       "read the ledger, write rules, raise invoices and match payments — using " +
       "exactly the same code the screens use. A read-only key stays read-only.",
   },
+  {
+    for: "both",
+    kicker: "Accounts",
+    title: "Current, credit card, savings — all of it",
+    body:
+      "Every account you import sits side by side with its own balance and its own " +
+      "history. Money moved between two of them is recognised as a transfer and " +
+      "counted as spending in neither, which is the difference between a number " +
+      "you can trust and one that double-counts every time you top up savings.",
+  },
+  {
+    for: "personal",
+    kicker: "Budget",
+    title: "An envelope per category",
+    body:
+      "Set what you mean to spend on groceries, fuel or eating out and see it against " +
+      "what actually left the account. No forecast, no projection — last month is a " +
+      "fact, and a budget you can check against one is worth more than one you cannot.",
+  },
+  {
+    for: "personal",
+    kicker: "Savings",
+    title: "Watch the balance go the right way",
+    body:
+      "A savings account gets its own view: what went in, what came out, and the " +
+      "balance over time. Where the return is genuinely knowable it is shown, and " +
+      "where it is not — because a statement records deposits and not interest — it " +
+      "says so instead of inventing a percentage.",
+  },
+  {
+    for: "both",
+    kicker: "Documents",
+    title: "Point it at a folder of paperwork",
+    body:
+      "Invoices, receipts and payslips are read into fields — issuer, date, net, VAT, " +
+      "total. Nothing reaches the books until you confirm it, every field is editable " +
+      "first, and what gets saved is what is on screen rather than what was read.",
+  },
+  {
+    for: "both",
+    kicker: "Both at once",
+    title: "Your business and your household, one login",
+    body:
+      "Books are separate: separate ledger, separate categories, separate everything. " +
+      "Switch between them from the sidebar. Nothing from one appears in a report, a " +
+      "VAT return or a budget belonging to the other.",
+  },
 ];
 
+/**
+ * The two stories the hero tells, and the switch between them.
+ *
+ * Same product, same ledger — but a person deciding whether this is for them
+ * has one of two jobs in mind, and a hero that hedges across both persuades
+ * neither. So the page picks one and offers the other explicitly.
+ */
+export const AUDIENCES = {
+  business: {
+    label: "For a business",
+    kicker: "Irish · EUR · cash-basis VAT",
+    headline: ["The books,", "actually sorted"],
+    body:
+      "Upload the statement your bank already gives you. cashish categorises it, " +
+      "matches the money to your invoices, and works out the VAT — on the cash " +
+      "basis, the way a small Irish company actually files.",
+    cta: "Start a set of books",
+    figures: [
+      ["220", "bank lines in a first import"],
+      ["63", "rules doing the categorising"],
+      ["1", "place the VAT figure comes from"],
+      ["0", "spreadsheets involved"],
+    ],
+  },
+  personal: {
+    label: "For yourself",
+    kicker: "Current · Credit card · Savings",
+    headline: ["Your own money,", "finally legible"],
+    body:
+      "The same ledger, with the trading half switched off. Import every account " +
+      "you have, let the rules do the categorising, and see where it actually went " +
+      "— with a budget per category and transfers between your own accounts " +
+      "counted as spending in neither.",
+    cta: "Start a personal book",
+    figures: [
+      ["12k", "transactions is a normal ledger"],
+      ["3", "kinds of account: current, credit, savings"],
+      ["0", "of your transfers counted as spending"],
+      ["1", "login for your business and your household"],
+    ],
+  },
+} as const;
+
+export type AudienceKey = keyof typeof AUDIENCES;
+
 export const FAQ = [
+  {
+    q: "Can I keep my business and my personal books in the same account?",
+    a:
+      "Yes, and they stay completely separate — separate ledger, separate categories, " +
+      "separate reports. You switch between them in the sidebar. A personal book has no " +
+      "invoices, no VAT return and no payroll; it has a budget instead.",
+  },
+  {
+    q: "What does a personal book actually give me?",
+    a:
+      "Every account in one place with its own balance, rules that categorise the " +
+      "spending, a budget per category against what you really spent, and a month-by-" +
+      "month view of where it went. Money moved between your own accounts is recognised " +
+      "as a transfer, so topping up savings never reads as €500 of spending.",
+  },
   {
     q: "Is this a Revenue-approved filing tool?",
     a:
@@ -136,14 +276,23 @@ export const FAQ = [
   {
     q: "Which banks work?",
     a:
-      "Any bank that exports a CSV. It was built against Revolut Business and reads " +
-      "a handful of common header spellings, so most exports import without fuss.",
+      "Any bank that exports a CSV. It was built against Revolut — the business export " +
+      "and the personal one, including savings statements, which are a different shape " +
+      "again — and reads a handful of common header spellings, so most exports import " +
+      "without fuss. There is no bank feed: you upload the file.",
   },
   {
     q: "Is it only euro?",
     a:
       "Yes, deliberately. EUR-only keeps the VAT logic honest. Foreign-currency " +
       "transactions still import with their original amount recorded.",
+  },
+  {
+    q: "Does it tell me what to do with my money?",
+    a:
+      "No. cashish is a ledger, not an adviser: it shows you what happened and what you " +
+      "budgeted, and every figure traces back to a bank line you can click. It does not " +
+      "recommend investments and it does not project your future.",
   },
   {
     q: "Can my accountant get in?",
