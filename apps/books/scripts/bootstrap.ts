@@ -8,7 +8,14 @@
  * Refuses to touch an existing tenant, so re-running by accident cannot reset
  * anybody's password.
  */
-import { createTenant, findTenantBySlug } from "../src/db/seed";
+import {
+  createTenant,
+  findTenantBySlug,
+  IE_VAT_RATES,
+  GB_VAT_RATES,
+  DEFAULT_CATEGORIES,
+  PERSONAL_CATEGORIES,
+} from "../src/db/seed";
 import { createUser, findUserByEmail, addMembership, roleFor } from "../src/lib/auth";
 import { pool } from "@cashish/core/db";
 
@@ -65,7 +72,15 @@ async function main() {
 
   console.log(`tenant  ${slug}  (${tenantId})  ${kind} · ${region}`);
   console.log(`owner   ${email}  role=${await roleFor(userId, tenantId)}`);
-  console.log(`\nSeeded 5 Irish VAT rates and 15 default categories.`);
+  // Counted, not hardcoded: the numbers now depend on the kind and the region,
+  // and a line that says "5 Irish VAT rates" after seeding a UK personal book
+  // is worse than no line at all.
+  const rates = region === "GB" ? GB_VAT_RATES.length : IE_VAT_RATES.length;
+  const cats = kind === "personal" ? PERSONAL_CATEGORIES.length : DEFAULT_CATEGORIES.length;
+  console.log(
+    `\nSeeded ${rates} ${region === "GB" ? "UK" : "Irish"} VAT rates and ${cats} ` +
+      `${kind === "personal" ? "everyday" : "default"} categories.`,
+  );
   console.log(`Next: import the book with scripts/cloud-import.ts --tenant ${slug}`);
 
   await pool.end();
