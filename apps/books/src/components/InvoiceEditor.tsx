@@ -26,6 +26,7 @@ type ExistingInvoice = {
   dueDate: string | null;
   notes: string | null;
   terms: string | null;
+  contractId: string | null;
   lines: InvoiceLine[];
 };
 
@@ -33,6 +34,8 @@ type Props = {
   customers: Customer[];
   products: Product[];
   vatRates: VatRate[];
+  /** Open contracts, so an invoice can be raised under the agreement it belongs to. */
+  contracts?: { id: string; name: string; customerId: string; customerName: string }[];
   invoice?: ExistingInvoice;
   previewNumber?: string;
 };
@@ -44,6 +47,7 @@ export function InvoiceEditor({
   customers,
   products,
   vatRates,
+  contracts = [],
   invoice,
   previewNumber,
 }: Props) {
@@ -52,6 +56,7 @@ export function InvoiceEditor({
   const vatMap = useMemo(() => new Map(vatRates.map((v) => [v.id, v])), [vatRates]);
 
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
+  const [contractId, setContractId] = useState(invoice?.contractId ?? "");
   const [status, setStatus] = useState(invoice?.status ?? "draft");
   const [issueDate, setIssueDate] = useState(invoice?.issueDate ?? todayISO());
   const [dueDate, setDueDate] = useState(
@@ -163,6 +168,7 @@ export function InvoiceEditor({
         dueDate,
         notes,
         terms,
+        contractId: contractId || null,
         lines: payloadLines,
       });
       if (result?.id) router.push(`/invoices/${result.id}`);
@@ -180,7 +186,10 @@ export function InvoiceEditor({
               <select
                 className="input"
                 value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
+                onChange={(e) => {
+                  setCustomerId(e.target.value);
+                  setContractId("");
+                }}
               >
                 <option value="">Select customer…</option>
                 {customers.map((c) => (
@@ -190,6 +199,28 @@ export function InvoiceEditor({
                 ))}
               </select>
             </div>
+            {contracts.length > 0 && (
+              <div className="col-span-2">
+                <label className="label">Contract</label>
+                <select
+                  className="input"
+                  value={contractId}
+                  onChange={(e) => setContractId(e.target.value)}
+                  disabled={!customerId}
+                >
+                  <option value="">Not under a contract</option>
+                  {/* Only this customer's agreements: an invoice raised under
+                      somebody else's contract would total into the wrong one. */}
+                  {contracts
+                    .filter((c) => c.customerId === customerId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">Issue date</label>
               <input

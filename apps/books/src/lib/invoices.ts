@@ -26,6 +26,8 @@ export type InvoiceInput = {
   dueDate?: string | null;
   notes?: string;
   terms?: string;
+  /** The agreement this is raised under, so the contract can total itself. */
+  contractId?: string | null;
   lines: LineInput[];
 };
 
@@ -127,6 +129,7 @@ export async function createInvoice(input: InvoiceInput) {
       tenantId: tid,
       number,
       customerId: input.customerId,
+      contractId: input.contractId ?? null,
       status: input.status ?? "draft",
       issueDate: input.issueDate,
       dueDate: input.dueDate ?? null,
@@ -156,6 +159,7 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
       .update(invoices)
       .set({
         customerId: input.customerId,
+        contractId: input.contractId ?? null,
         status: input.status,
         issueDate: input.issueDate,
         dueDate: input.dueDate ?? null,

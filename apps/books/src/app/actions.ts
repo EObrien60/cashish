@@ -10,6 +10,14 @@ import {
 } from "@/lib/accounts";
 import { detectTransfers, pairTransfers, markTransfer, unmarkTransfer } from "@/lib/transfers";
 import type { AccountKind } from "@cashish/core/db";
+import {
+  saveContract,
+  setContractStatus,
+  deleteContract,
+  attachDocument,
+  type ContractInput,
+  type ContractStatus,
+} from "@/lib/contracts";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db, first, schema, tenantId, type Payslip } from "@cashish/core/db";
@@ -591,6 +599,43 @@ export async function deletePayRunAction(id: string) {
 }
 
 // ---- Settings -------------------------------------------------------------
+
+// --- Contracts --------------------------------------------------------------
+
+export async function saveContractAction(input: ContractInput) {
+  return withCapability("books:write", async () => {
+    const id = await saveContract(input);
+    revalidatePath("/contracts");
+    revalidatePath("/invoices");
+    return { id };
+  });
+}
+
+export async function setContractStatusAction(id: string, status: ContractStatus) {
+  return withCapability("books:write", async () => {
+    await setContractStatus(id, status);
+    revalidatePath("/contracts");
+  });
+}
+
+export async function deleteContractAction(id: string) {
+  return withCapability("books:write", async () => {
+    await deleteContract(id);
+    revalidatePath("/contracts");
+  });
+}
+
+export async function attachContractDocumentAction(formData: FormData) {
+  const id = String(formData.get("contractId") ?? "");
+  const file = formData.get("file") as File | null;
+  if (!id || !file) return { error: "Choose a file." };
+  const bytes = Buffer.from(await file.arrayBuffer());
+  return withCapability("books:write", async () => {
+    await attachDocument(id, { name: file.name, type: file.type, bytes });
+    revalidatePath("/contracts");
+    return { ok: true };
+  });
+}
 
 // --- Accounts ---------------------------------------------------------------
 
