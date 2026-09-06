@@ -158,6 +158,19 @@ export async function importTransactions(
  */
 export const notExcluded = () => eq(transactions.excluded, false);
 
+/**
+ * Not your own money changing pockets.
+ *
+ * A recognised transfer is neither income nor spending, and any total that
+ * includes one is wrong twice over — the sending account looks like it spent
+ * the money and the receiving one like it earned it. `notExcluded` does NOT
+ * cover this: detection sets transferAccountId, whereas excluding is a separate
+ * decision that only happens if somebody writes a transfer rule.
+ *
+ * Used beside notExcluded() wherever money is added up.
+ */
+export const notTransfer = () => sql`${transactions.transferAccountId} is null`;
+
 export type TxFilter = {
   from?: string;
   to?: string;

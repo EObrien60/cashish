@@ -70,7 +70,11 @@ const SECTIONS: {
     items: [
       { href: "/insights", label: "Where it went", icon: IconWand },
       { href: "/reports", label: "Reports", icon: IconReport },
-      { href: "/reports/cashflow", label: "Cash flow", icon: IconReport },
+      // The forecast is built from open invoices and recurring invoice
+      // templates — a household has neither, so for a personal book it is a
+      // sheet of repeating expenses and nothing else. Hidden until it has
+      // something to say.
+      { href: "/reports/cashflow", label: "Cash flow", icon: IconReport, businessOnly: true },
       { href: "/vat", label: "VAT return", icon: IconVat, businessOnly: true },
     ],
   },

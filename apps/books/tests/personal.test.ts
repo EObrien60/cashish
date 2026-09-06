@@ -287,3 +287,59 @@ test("the ledger pages, and its totals cover the whole set rather than the page"
   const hits = await asTenant(tenant, () => summariseTransactions({ search: "Tesco" }));
   assert.equal(hits.count, 50);
 });
+
+/**
+ * Which half of the app a book gets.
+ *
+ * bookKind is what every personal/business fork in the UI reads, so it is worth
+ * asserting directly rather than through a page: a wrong answer here shows a
+ * household a VAT return, or hides a company's invoices.
+ */
+test("bookKind reports what the tenant is, and defaults to business", async () => {
+  const { bookKind } = await import("../src/lib/lookups");
+
+  const personalId = await createTenant({
+    slug: `kind-personal-${uid().slice(0, 8)}`,
+    name: "Household",
+    kind: "personal",
+  });
+  const businessId = await createTenant({
+    slug: `kind-business-${uid().slice(0, 8)}`,
+    name: "Harbour IT",
+  });
+
+  assert.equal(await asTenant(personalId, bookKind), "personal");
+  assert.equal(await asTenant(businessId, bookKind), "business", "the default");
+});
+
+/**
+ * Money moved between your own accounts is not spending, in every report.
+ *
+ * This was fixed on the insights page and the same omission was still in
+ * analysis.ts, which is what the reports page is built from — so a transfer to
+ * savings appeared as an overhead there too.
+ */
+test("a transfer between your own accounts is not in the spend report", async () => {
+  const book = (await makeTenant("personal-spend")).id;
+  await asTenant(book, async () => {
+    const account = uid();
+    await db.insert(schema.accounts).values({
+      id: account, tenantId: book, name: "Savings", kind: "savings", currency: "EUR",
+    });
+    await db.insert(schema.transactions).values([
+      { id: uid(), tenantId: book, bookedDate: "2026-04-03", amount: -60, description: "TESCO", importBatch: "b" },
+      {
+        id: uid(), tenantId: book, bookedDate: "2026-04-04", amount: -900,
+        description: "To EUR Saving", importBatch: "b", transferAccountId: account,
+      },
+    ]);
+
+    const { spendReport } = await import("../src/lib/analysis");
+    const spend = await spendReport("2026-01-01", "2026-12-31");
+    assert.equal(spend.total, 60, "only the shop counts as spending");
+    assert.ok(
+      !spend.counterparties.some((c) => c.name.includes("Saving")),
+      "your own savings account is not somebody you paid",
+    );
+  });
+});

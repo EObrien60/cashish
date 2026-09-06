@@ -201,3 +201,107 @@ test("rule proposal is scoped to one account and measures its own suggestions", 
   // Sorted by what is at stake, so the biggest mess is offered first.
   assert.equal(needing[0].name, "Current");
 });
+
+// ---------------------------------------------------------------------------
+// What went wrong on a real personal book with twelve thousand transactions.
+//
+// "Who got it" was nine tenths internal transfers — To EUR Saving, To EUR
+// China, Transfer to ETHAN — because a transfer is only absent from these
+// figures if something excluded it, and DETECTED transfers are not excluded.
+// And "Where it went" reported more spending than the ledger's total out,
+// because the category totals summed the absolute value of income too.
+// ---------------------------------------------------------------------------
+
+const transfer = (description: string, amount: number, date: string, toAccount: string) =>
+  asTenant(tenant, async () => {
+    await db.insert(schema.transactions).values({
+      id: uid(), tenantId: tenant, bookedDate: date, amount, description,
+      importBatch: "t", transferAccountId: toAccount,
+    });
+  });
+
+test("money moved between your own accounts is not a merchant you paid", async () => {
+  await reset();
+  const account = await asTenant(tenant, async () => {
+    const id = uid();
+    await db.insert(schema.accounts).values({
+      id, tenantId: tenant, name: "EUR Saving", kind: "savings", currency: "EUR",
+    });
+    return id;
+  });
+
+  await tx("LIDL 4471 GALWAY", -50, "2026-03-04");
+  // Recognised as a transfer, but nothing excluded it — which is the state
+  // every detected transfer is in until somebody writes a rule for it.
+  await transfer("To EUR Saving", -5000, "2026-03-05", account);
+
+  const facts = await asTenant(tenant, () =>
+    buildFactSheet({ from: "2026-01-01", to: "2026-12-31" }),
+  );
+
+  assert.deepEqual(
+    facts.merchants.map((m) => m.label),
+    ["LIDL GALWAY"],
+    "a transfer to your own savings is not somebody who got paid",
+  );
+  assert.equal(facts.totals.out, 50, "and it is not spending either");
+  assert.equal(facts.totals.movedBetweenAccounts, 5000, "it is counted here instead");
+});
+
+test("what it went on never exceeds what went out", async () => {
+  await reset();
+  await tx("SALARY", 4000, "2026-03-01");
+  await tx("LIDL", -50, "2026-03-04");
+
+  const facts = await asTenant(tenant, () =>
+    buildFactSheet({ from: "2026-01-01", to: "2026-12-31" }),
+  );
+
+  const spent = facts.categories
+    .filter((c) => c.kind === "expense")
+    .reduce((a, c) => a + c.total, 0);
+  assert.equal(spent, 50, "uncategorised income must not be counted as spending");
+  assert.ok(spent <= facts.totals.out, "the breakdown cannot exceed the total");
+});
+
+test("what recurs every month is separated from what happened once", async () => {
+  await reset();
+  // Nine months. Rent every month, a subscription every month, a sofa once,
+  // and a gym that was cancelled in March.
+  for (let m = 1; m <= 9; m++) {
+    const mm = String(m).padStart(2, "0");
+    await tx("RENT DUBLIN", -1400, `2026-${mm}-01`);
+    await tx("SPOTIFY", -11.99, `2026-${mm}-14`);
+  }
+  await tx("DFS SOFA", -2200, "2026-05-02");
+  for (const mm of ["01", "02", "03"]) await tx("FLYEFIT GYM", -39, `2026-${mm}-06`);
+
+  const facts = await asTenant(tenant, () =>
+    buildFactSheet({ from: "2026-01-01", to: "2026-09-30" }),
+  );
+
+  assert.equal(facts.monthsInPeriod, 9);
+  assert.deepEqual(
+    facts.commitments.map((c) => [c.label, c.monthly]),
+    [
+      ["RENT DUBLIN", 1400],
+      ["SPOTIFY", 11.99],
+    ],
+    "a one-off sofa is not a monthly cost, and a cancelled gym is not a current one",
+  );
+  assert.equal(facts.commitmentsMonthly, 1411.99);
+});
+
+test("an annual bill inside a monthly series does not inflate the monthly figure", async () => {
+  await reset();
+  for (let m = 1; m <= 9; m++) {
+    const mm = String(m).padStart(2, "0");
+    // €60 a month, except one month that also carries a €900 annual renewal.
+    await tx("AVIVA INSURANCE", m === 4 ? -960 : -60, `2026-${mm}-08`);
+  }
+  const facts = await asTenant(tenant, () =>
+    buildFactSheet({ from: "2026-01-01", to: "2026-09-30" }),
+  );
+  const aviva = facts.commitments.find((c) => c.label.startsWith("AVIVA"));
+  assert.equal(aviva?.monthly, 60, "the median holds; a mean would have said 160");
+});
