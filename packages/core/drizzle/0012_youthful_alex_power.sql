@@ -2,7 +2,7 @@ CREATE TABLE "platform_settings" (
 	"id" text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
 	"stripe_secret_key" text DEFAULT '',
 	"stripe_webhook_secret" text DEFAULT '',
-	"email_provider" text DEFAULT 'resend' NOT NULL,
+	"email_provider" text DEFAULT 'sendgrid' NOT NULL,
 	"email_api_key" text DEFAULT '',
 	"email_from_address" text DEFAULT '',
 	"email_from_name" text DEFAULT 'cashish',

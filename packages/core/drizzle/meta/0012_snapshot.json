@@ -1,5 +1,5 @@
 {
-  "id": "45333b85-4b5e-497a-8f1a-32f0ddc209c4",
+  "id": "64bef966-e851-4b8e-aa05-01092d8d72c0",
   "prevId": "c61fcc14-cb8d-4619-8794-be4fe4666114",
   "version": "7",
   "dialect": "postgresql",
@@ -3627,7 +3627,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'resend'"
+          "default": "'sendgrid'"
         },
         "email_api_key": {
           "name": "email_api_key",

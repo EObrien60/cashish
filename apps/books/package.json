@@ -6,7 +6,7 @@
   "description": "Lightweight EUR accounting — statements, invoicing, VAT, payroll.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run db:migrate -w @cashish/core && next build",
     "start": "next start",
     "lint": "next lint",
     "db:studio": "drizzle-kit studio",

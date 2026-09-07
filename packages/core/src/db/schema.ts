@@ -1202,7 +1202,7 @@ export const platformSettings = pgTable("platform_settings", {
   stripeSecretKey: text("stripe_secret_key").default(""),
   /** Stripe webhook signing secret, to verify events actually came from Stripe. */
   stripeWebhookSecret: text("stripe_webhook_secret").default(""),
-  emailProvider: text("email_provider").notNull().default("resend"), // 'resend' for now
+  emailProvider: text("email_provider").notNull().default("sendgrid"), // 'sendgrid' for now
   emailApiKey: text("email_api_key").default(""),
   emailFromAddress: text("email_from_address").default(""),
   emailFromName: text("email_from_name").default("cashish"),

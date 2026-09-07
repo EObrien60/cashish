@@ -68,10 +68,10 @@ export default async function PlatformSettingsPage() {
             <label className="adm-label">Provider</label>
             <select
               name="emailProvider"
-              defaultValue={settings.emailProvider ?? "resend"}
+              defaultValue={settings.emailProvider ?? "sendgrid"}
               className="adm-input"
             >
-              <option value="resend">Resend</option>
+              <option value="sendgrid">SendGrid</option>
             </select>
           </div>
           <div>
@@ -81,7 +81,7 @@ export default async function PlatformSettingsPage() {
               type="password"
               autoComplete="off"
               defaultValue={settings.emailApiKey ?? ""}
-              placeholder="re_…"
+              placeholder="SG.…"
               className="adm-input adm-mono"
             />
           </div>
