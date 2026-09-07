@@ -4,8 +4,11 @@ import { uid } from "./id";
 import { round2 } from "./format";
 import { createTenantPaymentLink } from "@cashish/core/stripe";
 import { sendEmail } from "@cashish/core/email";
-import { invoiceEmailHtml } from "./invoice-email";
-import { renderInvoicePdf } from "./invoice-pdf";
+// Dynamic, deliberately: @react-pdf/renderer is a heavy dependency (font
+// layout, hyphenation tables) that only sendInvoiceEmail below ever needs.
+// A static import here would load it into every module that imports
+// anything from this file at all — including every test file that just
+// wants createInvoice, none of which ever send an email.
 
 const { invoices, invoiceLines, payments, settings, customers, vatRates } = schema;
 
@@ -360,6 +363,10 @@ export async function sendInvoiceEmail(id: string) {
   const businessName = tenantSettings?.businessName || "cashish";
   const pdfInput = { invoice: inv, customer: customer ?? null, settings: tenantSettings ?? null, vatRates: vatRateMap };
 
+  const [{ invoiceEmailHtml }, { renderInvoicePdf }] = await Promise.all([
+    import("./invoice-email"),
+    import("./invoice-pdf"),
+  ]);
   const [html, pdf] = await Promise.all([
     Promise.resolve(invoiceEmailHtml({ ...pdfInput, paymentLinkUrl })),
     renderInvoicePdf(pdfInput),
