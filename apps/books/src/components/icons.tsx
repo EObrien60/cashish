@@ -64,3 +64,4 @@ export const IconWand = (p: P) => (<Svg {...p}><path d="m15 4 1 2 2 1-2 1-1 2-1-
 export const IconFile = (p: P) => (<Svg {...p}><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></Svg>);
 export const IconPayroll = (p: P) => (<Svg {...p}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><circle cx="12" cy="13" r="2.5" /></Svg>);
 export const IconDownload = (p: P) => (<Svg {...p}><path d="M12 4v12M7 11l5 5 5-5" /><path d="M4 20h16" /></Svg>);
+export const IconMail = (p: P) => (<Svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></Svg>);

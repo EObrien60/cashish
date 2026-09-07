@@ -2,8 +2,10 @@ import { db, first, schema, tenantId } from "@cashish/core/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { uid } from "./id";
 import { round2 } from "./format";
+import { createTenantPaymentLink } from "@cashish/core/stripe";
+import { sendEmail } from "@cashish/core/email";
 
-const { invoices, invoiceLines, payments, settings, vatRates } = schema;
+const { invoices, invoiceLines, payments, settings, customers, vatRates } = schema;
 
 export type LineInput = {
   productId?: string | null;
@@ -304,4 +306,72 @@ export async function setInvoiceStatus(id: string, status: string) {
     .where(and(eq(invoices.tenantId, tenantId()), eq(invoices.id, id)));
   if (status !== "void" && status !== "draft") await recomputeInvoiceStatus(id);
   return getInvoice(id);
+}
+
+/**
+ * Emails an invoice to its customer, with a Stripe "Pay now" link if the
+ * tenant has their own Stripe key configured (settings.stripeSecretKey).
+ *
+ * The link is created once and cached on the invoice (`stripePaymentLinkUrl`)
+ * — a customer who already opened it should keep getting the same one, not a
+ * fresh link every time the invoice is resent.
+ *
+ * Throws with a message safe to show the user: no customer email on file, or
+ * the platform's own email sending isn't configured yet (see
+ * @cashish/core/email — an admin sets that up, not this function).
+ */
+export async function sendInvoiceEmail(id: string) {
+  const tid = tenantId();
+  const inv = await getInvoice(id);
+  if (!inv) throw new Error("Invoice not found.");
+
+  const [customer, tenantSettings] = await Promise.all([
+    first(
+      await db
+        .select()
+        .from(customers)
+        .where(and(eq(customers.tenantId, tid), eq(customers.id, inv.customerId)))
+        .limit(1),
+    ),
+    first(await db.select().from(settings).where(eq(settings.tenantId, tid)).limit(1)),
+  ]);
+  if (!customer?.email) {
+    throw new Error("This customer has no email address on file — add one in Customers.");
+  }
+
+  const due = round2(inv.total - inv.amountPaid);
+  let paymentLinkUrl = inv.stripePaymentLinkUrl;
+  if (!paymentLinkUrl && tenantSettings?.stripeSecretKey && due > 0.005) {
+    paymentLinkUrl = await createTenantPaymentLink(tenantSettings.stripeSecretKey, {
+      amount: due,
+      currency: inv.currency,
+      description: `Invoice ${inv.number}`,
+    });
+    await db
+      .update(invoices)
+      .set({ stripePaymentLinkUrl: paymentLinkUrl })
+      .where(and(eq(invoices.tenantId, tid), eq(invoices.id, id)));
+  }
+
+  const businessName = tenantSettings?.businessName || "cashish";
+  const html = [
+    `<p>Hi ${customer.name},</p>`,
+    `<p>Please find invoice <strong>${inv.number}</strong> from ${businessName}, ` +
+      `total <strong>${inv.currency} ${due.toFixed(2)}</strong> due` +
+      `${inv.dueDate ? ` by ${inv.dueDate}` : ""}.</p>`,
+    paymentLinkUrl ? `<p><a href="${paymentLinkUrl}">Pay now</a></p>` : "",
+    `<p>${tenantSettings?.invoiceFooter || "Thank you for your business."}</p>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await sendEmail({
+    to: customer.email,
+    subject: `Invoice ${inv.number} from ${businessName}`,
+    html,
+    fromName: businessName,
+    replyTo: tenantSettings?.email || undefined,
+  });
+
+  await setInvoiceStatus(id, "sent");
 }

@@ -8,7 +8,9 @@
     "./db": "./src/db/index.ts",
     "./rbac": "./src/rbac.ts",
     "./migrate": "./src/migrate.ts",
-    "./plans": "./src/plans.ts"
+    "./plans": "./src/plans.ts",
+    "./stripe": "./src/stripe.ts",
+    "./email": "./src/email.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
@@ -16,7 +18,9 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.38.4",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "stripe": "^17.5.0",
+    "resend": "^4.0.1"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

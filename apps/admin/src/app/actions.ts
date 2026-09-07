@@ -29,6 +29,7 @@ const {
   users,
   subscriptions,
   plans,
+  platformSettings,
 } = schema;
 
 const nowISO = () => new Date().toISOString();
@@ -403,5 +404,67 @@ export async function savePlan(formData: FormData): Promise<Result> {
 
   revalidatePath("/plans");
   revalidatePath("/subscriptions");
+  return { ok: true };
+}
+
+// ---- Platform settings ------------------------------------------------------
+//
+// One row (id = 'singleton'). Two forms on the settings page submit to this
+// same action, each with only its own fields — `formData.has()` decides what
+// gets touched, so saving the email form never blanks out the Stripe fields
+// and vice versa.
+
+const PLATFORM_SETTINGS_FIELDS = [
+  "stripeSecretKey",
+  "stripeWebhookSecret",
+  "emailProvider",
+  "emailApiKey",
+  "emailFromAddress",
+  "emailFromName",
+] as const;
+
+export async function savePlatformSettings(formData: FormData): Promise<Result> {
+  const admin = await requireAdmin();
+
+  const patch: Record<string, string> = {};
+  for (const field of PLATFORM_SETTINGS_FIELDS) {
+    if (formData.has(field)) patch[field] = String(formData.get(field) ?? "");
+  }
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const [existing] = await db
+    .select()
+    .from(platformSettings)
+    .where(eq(platformSettings.id, "singleton"))
+    .limit(1);
+
+  await withAudit(
+    admin.id,
+    {
+      action: "platform_settings.update",
+      subjectType: "platform_settings",
+      subjectId: "singleton",
+      before: existing
+        ? Object.fromEntries(
+            Object.keys(patch).map((k) => [
+              k,
+              (existing as unknown as Record<string, string>)[k] ? "(set)" : "",
+            ]),
+          )
+        : null,
+      after: Object.fromEntries(Object.keys(patch).map((k) => [k, patch[k] ? "(set)" : ""])),
+    },
+    async (trx) => {
+      await trx
+        .insert(platformSettings)
+        .values({ id: "singleton", ...patch, updatedAt: nowISO() })
+        .onConflictDoUpdate({
+          target: platformSettings.id,
+          set: { ...patch, updatedAt: nowISO() },
+        });
+    },
+  );
+
+  revalidatePath("/settings");
   return { ok: true };
 }

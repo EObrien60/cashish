@@ -6,12 +6,13 @@ import Link from "next/link";
 import { money, fmtDate, todayISO, round2 } from "@/lib/format";
 import { Card } from "@/components/ui";
 import { Modal } from "@/components/Modal";
-import { IconPrint, IconEdit, IconPlus, IconTrash, IconCheck } from "@/components/icons";
+import { IconPrint, IconEdit, IconPlus, IconTrash, IconCheck, IconMail } from "@/components/icons";
 import {
   addPayment,
   removePayment,
   changeInvoiceStatus,
   deleteInvoiceAction,
+  sendInvoiceEmailAction,
 } from "@/app/actions";
 import type { Payment } from "@cashish/core/db";
 
@@ -66,6 +67,21 @@ export function InvoiceActions({
     });
   }
 
+  const [sending, setSending] = useState(false);
+  function sendEmail() {
+    setSending(true);
+    startTransition(async () => {
+      try {
+        await sendInvoiceEmailAction(invoiceId);
+        router.refresh();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Failed to send invoice.");
+      } finally {
+        setSending(false);
+      }
+    });
+  }
+
   function del() {
     if (!confirm("Delete this invoice and its payments? This can't be undone."))
       return;
@@ -111,6 +127,11 @@ export function InvoiceActions({
               }}
             >
               <IconPlus className="h-4 w-4" /> Record payment
+            </button>
+          )}
+          {status !== "void" && (
+            <button className="btn-outline w-full" onClick={sendEmail} disabled={sending}>
+              <IconMail className="h-4 w-4" /> {sending ? "Sending…" : "Send by email"}
             </button>
           )}
           <button

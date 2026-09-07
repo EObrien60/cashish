@@ -20,7 +20,7 @@ import { db, schema, type Db } from "@cashish/core/db";
 
 const { adminAuditLog } = schema;
 
-export type SubjectType = "tenant" | "user" | "subscription" | "plan";
+export type SubjectType = "tenant" | "user" | "subscription" | "plan" | "platform_settings";
 
 export type AuditEntry = {
   action: string;

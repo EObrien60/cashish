@@ -142,6 +142,13 @@ export const settings = pgTable("settings", {
   vatBasis: text("vat_basis").notNull().default("cash"), // 'cash' | 'invoice'
   logoDataUrl: text("logo_data_url").default(""),
   employerRegNumber: text("employer_reg_number").default(""), // Employer PAYE/PRSI reg no
+  /**
+   * The tenant's own Stripe secret key (sk_live_… / sk_test_…), used only to
+   * create a Payment Link on their own invoices — money for a payment made
+   * against this key goes straight to the tenant's own Stripe account, never
+   * through cashish. Not the platform's key (see `platformSettings`).
+   */
+  stripeSecretKey: text("stripe_secret_key").default(""),
 });
 
 export const vatRates = pgTable(
@@ -337,6 +344,13 @@ export const invoices = pgTable(
     amountPaid: doublePrecision("amount_paid").notNull().default(0),
     /** Which agreement this was raised under, so a contract can total itself. */
     contractId: text("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+    /**
+     * Cached Stripe Payment Link, created against the tenant's own
+     * `settings.stripeSecretKey`. Generated once on first send and reused —
+     * not regenerated per view, so it stays the one link a client may have
+     * already opened.
+     */
+    stripePaymentLinkUrl: text("stripe_payment_link_url"),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [
@@ -1166,6 +1180,9 @@ export const subscriptions = pgTable(
     trialEndsAt: text("trial_ends_at"),
     currentPeriodEnd: text("current_period_end"),
     cancelledAt: text("cancelled_at"),
+    /** Stripe's own identifiers — the platform's Stripe account, never the tenant's. */
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
     note: text("note").notNull().default(""),
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
@@ -1173,7 +1190,27 @@ export const subscriptions = pgTable(
   (t) => [uniqueIndex("subscription_tenant_idx").on(t.tenantId)],
 );
 
+/**
+ * One row, always `id = 'singleton'`. Not tenant-scoped — this is the
+ * platform's own configuration: the Stripe account cashish itself bills
+ * subscriptions through, and the email provider cashish sends from.
+ * Editable only from the admin console (`tenant:admin`-equivalent —
+ * platform-admin auth, not a tenant role), never from a tenant's own app.
+ */
+export const platformSettings = pgTable("platform_settings", {
+  id: text("id").primaryKey().default("singleton"),
+  stripeSecretKey: text("stripe_secret_key").default(""),
+  /** Stripe webhook signing secret, to verify events actually came from Stripe. */
+  stripeWebhookSecret: text("stripe_webhook_secret").default(""),
+  emailProvider: text("email_provider").notNull().default("resend"), // 'resend' for now
+  emailApiKey: text("email_api_key").default(""),
+  emailFromAddress: text("email_from_address").default(""),
+  emailFromName: text("email_from_name").default("cashish"),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;
 export type AdminAuditEntry = typeof adminAuditLog.$inferSelect;
 export type PlanRow = typeof plans.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+export type PlatformSettings = typeof platformSettings.$inferSelect;
