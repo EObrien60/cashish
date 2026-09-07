@@ -113,6 +113,30 @@ export default async function PlatformSettingsPage() {
           </button>
         </ActionForm>
       </Section>
+
+      <Section title="AI features">
+        <ActionForm action={savePlatformSettings} className="adm-card p-4 space-y-3 max-w-xl">
+          <input type="hidden" name="_aiFeaturesToggleSubmitted" value="1" />
+          <p className="text-xs text-ink-faint">
+            Document reading, the AI report, and suggested categorisation rules — every
+            AI-powered feature across every tenant. Off means those buttons and cards don&apos;t
+            render at all, for anyone, anywhere in the app — not shown disabled, not there.
+            Nothing about the books themselves needs this; cashish works without it either way.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="aiFeaturesEnabled"
+              defaultChecked={settings.aiFeaturesEnabled ?? true}
+              className="h-4 w-4"
+            />
+            AI features enabled
+          </label>
+          <button className="adm-btn-primary" type="submit">
+            Save
+          </button>
+        </ActionForm>
+      </Section>
     </div>
   );
 }

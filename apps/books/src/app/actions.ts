@@ -3,6 +3,7 @@
 import { setBudget, copyBudget, suggestBudget } from "@/lib/budgets";
 import { generateReport } from "@/lib/ai-report";
 import { proposeRulesForAccount, accountsNeedingRules } from "@/lib/ai-rules";
+import { aiAvailable, aiDisabledFailure } from "@/lib/ai";
 import {
   saveDocument,
   extractDocument,
@@ -645,10 +646,14 @@ export async function uploadDocumentsAction(formData: FormData) {
   }
 
   return withCapability("books:import", async () => {
+    const available = await aiAvailable();
     const results: { id: string; fileName: string; ok: boolean; reason?: string }[] = [];
     for (const file of prepared) {
       const id = await saveDocument(file);
-      const read = await extractDocument(id);
+      // Still saved either way — storing and reading are separate steps, and a
+      // document uploaded while AI happens to be off shouldn't be lost, just
+      // left pending until it's read (manually, or once AI is back on).
+      const read = available ? await extractDocument(id) : aiDisabledFailure();
       results.push({
         id,
         fileName: file.name,
@@ -663,7 +668,7 @@ export async function uploadDocumentsAction(formData: FormData) {
 
 export async function rereadDocumentAction(id: string) {
   return withCapability("books:import", async () => {
-    const r = await extractDocument(id);
+    const r = (await aiAvailable()) ? await extractDocument(id) : aiDisabledFailure();
     revalidatePath("/documents");
     return r;
   });
@@ -720,11 +725,17 @@ export async function deleteDocumentAction(id: string) {
 export async function generateReportAction(from: string, to: string) {
   // books:read, not write: a report changes nothing. The capability check is
   // still here so a signed-out request cannot spend tokens.
-  return withCapability("books:read", async () => generateReport({ from, to }));
+  return withCapability("books:read", async () => {
+    if (!(await aiAvailable())) return aiDisabledFailure();
+    return generateReport({ from, to });
+  });
 }
 
 export async function proposeRulesAction(accountId: string | null) {
-  return withCapability("books:read", async () => proposeRulesForAccount({ accountId }));
+  return withCapability("books:read", async () => {
+    if (!(await aiAvailable())) return aiDisabledFailure();
+    return proposeRulesForAccount({ accountId });
+  });
 }
 
 export async function accountsNeedingRulesAction() {

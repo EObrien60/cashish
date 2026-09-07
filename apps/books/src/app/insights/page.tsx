@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/request-context";
 import { buildFactSheet } from "@/lib/insights";
-import { aiIsConfigured } from "@/lib/ai";
+import { aiAvailable } from "@/lib/ai";
 import { resolvePeriod } from "@/lib/period";
 import { PageHeader } from "@/components/ui";
 import { PeriodTabs } from "@/components/PeriodTabs";
@@ -19,6 +19,7 @@ export default async function InsightsPage({
     // The facts render immediately and without a model. The commentary is asked
     // for on demand, so opening the page costs nothing and works offline.
     const facts = await buildFactSheet({ from: period.from, to: period.to });
+    const available = await aiAvailable();
 
     return (
       <div>
@@ -29,7 +30,7 @@ export default async function InsightsPage({
         <div className="mb-6">
           <PeriodTabs active={period.key} basePath="/insights" />
         </div>
-        <InsightsView facts={facts} period={period} aiAvailable={aiIsConfigured()} />
+        <InsightsView facts={facts} period={period} aiAvailable={available} />
       </div>
     );
   });

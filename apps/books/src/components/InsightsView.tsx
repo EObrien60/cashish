@@ -259,6 +259,7 @@ export function InsightsView({
         </Card>
       </div>
 
+      {aiAvailable && (
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -270,8 +271,7 @@ export function InsightsView({
           </div>
           <button
             className="btn-primary"
-            disabled={busy || !aiAvailable}
-            title={aiAvailable ? undefined : "No AI credentials on this deployment"}
+            disabled={busy}
             onClick={() => {
               setBusy(true);
               setError(null);
@@ -287,12 +287,6 @@ export function InsightsView({
           </button>
         </div>
 
-        {!aiAvailable && (
-          <p className="mt-3 text-sm text-ink-faint">
-            Set <code>AI_GATEWAY_API_KEY</code>, or enable AI Gateway on the Vercel project so OIDC
-            provides one. Everything above works without it.
-          </p>
-        )}
         {error && <p className="mt-3 text-sm text-money-out">{error}</p>}
 
         {report && (
@@ -325,6 +319,7 @@ export function InsightsView({
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }

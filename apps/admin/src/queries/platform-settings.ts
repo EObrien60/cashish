@@ -16,10 +16,11 @@ export async function getPlatformSettings() {
       id: "singleton" as const,
       stripeSecretKey: "",
       stripeWebhookSecret: "",
-      emailProvider: "resend",
+      emailProvider: "sendgrid",
       emailApiKey: "",
       emailFromAddress: "",
       emailFromName: "cashish",
+      aiFeaturesEnabled: true,
       updatedAt: "",
     }
   );

@@ -1,0 +1,1 @@
+ALTER TABLE "platform_settings" ADD COLUMN "ai_features_enabled" boolean DEFAULT true NOT NULL;
