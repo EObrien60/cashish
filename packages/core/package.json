@@ -20,7 +20,8 @@
     "drizzle-orm": "^0.38.4",
     "pg": "^8.23.0",
     "stripe": "^17.5.0",
-    "@sendgrid/mail": "^8.1.4"
+    "@sendgrid/mail": "^8.1.4",
+    "resend": "^4.0.1"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

@@ -72,6 +72,7 @@ export default async function PlatformSettingsPage() {
               className="adm-input"
             >
               <option value="sendgrid">SendGrid</option>
+              <option value="resend">Resend</option>
             </select>
           </div>
           <div>
@@ -81,7 +82,7 @@ export default async function PlatformSettingsPage() {
               type="password"
               autoComplete="off"
               defaultValue={settings.emailApiKey ?? ""}
-              placeholder="SG.…"
+              placeholder="SG.… (SendGrid) or re_… (Resend)"
               className="adm-input adm-mono"
             />
           </div>
