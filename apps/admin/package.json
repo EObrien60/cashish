@@ -5,7 +5,7 @@
   "description": "Platform admin console — tenants, users and subscriptions across the whole deployment.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run db:migrate -w @cashish/core && next build",
     "start": "next start",
     "lint": "next lint",
     "admin:create": "tsx scripts/create-admin.ts",

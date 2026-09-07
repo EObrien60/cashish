@@ -34,6 +34,7 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
     invoicePrefix: settings.invoicePrefix ?? "INV-",
     nextInvoiceSeq: String(settings.nextInvoiceSeq ?? 1),
     invoiceFooter: settings.invoiceFooter ?? "",
+    stripeSecretKey: settings.stripeSecretKey ?? "",
   });
 
   function setB<K extends keyof typeof biz>(k: K, v: string) {
@@ -260,6 +261,32 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
               value={biz.invoiceFooter}
               onChange={(e) => setB("invoiceFooter", e.target.value)}
             />
+          </div>
+          <button className="btn-primary mt-4" onClick={saveBiz}>
+            Save
+          </button>
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="mb-4 font-semibold">Payments</h2>
+          <p className="mb-4 text-xs text-ink-faint">
+            Add your own Stripe secret key to put a &quot;Pay now&quot; link on invoices you
+            send. Payments go straight to your own Stripe account — cashish never touches the
+            money, it only creates the link.
+          </p>
+          <div>
+            <label className="label">Stripe secret key</label>
+            <input
+              className="input font-mono"
+              type="password"
+              autoComplete="off"
+              value={biz.stripeSecretKey}
+              onChange={(e) => setB("stripeSecretKey", e.target.value)}
+              placeholder="sk_live_… or sk_test_…"
+            />
+            <p className="mt-1 text-xs text-ink-faint">
+              Found in the Stripe Dashboard under Developers → API keys.
+            </p>
           </div>
           <button className="btn-primary mt-4" onClick={saveBiz}>
             Save

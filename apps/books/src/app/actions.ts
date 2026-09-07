@@ -49,6 +49,7 @@ import {
   recordPayment,
   deletePayment as delPayment,
   setInvoiceStatus,
+  sendInvoiceEmail,
   type InvoiceInput,
 } from "@/lib/invoices";
 import {
@@ -398,6 +399,15 @@ export async function removePayment(invoiceId: string, paymentId: string) {
 export async function changeInvoiceStatus(id: string, status: string) {
   return withCapability("books:write", async () => {
     await setInvoiceStatus(id, status);
+    revalidatePath("/invoices");
+    revalidatePath(`/invoices/${id}`);
+  });
+}
+
+/** Errors here (no customer email, platform email not configured) are meant for the UI to show as-is. */
+export async function sendInvoiceEmailAction(id: string) {
+  return withCapability("books:write", async () => {
+    await sendInvoiceEmail(id);
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
   });
