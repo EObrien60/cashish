@@ -25,6 +25,7 @@
   "dependencies": {
     "@cashish/core": "*",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@react-pdf/renderer": "^4.9.0",
     "@vercel/blob": "^2.8.0",
     "ai": "^7.0.93",
     "drizzle-orm": "^0.38.4",

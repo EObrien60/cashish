@@ -52,6 +52,13 @@ export async function getPlatformEmailSettings(): Promise<PlatformEmailSettings 
   };
 }
 
+export type EmailAttachment = {
+  filename: string;
+  /** Raw bytes — each provider's own base64/Buffer requirement is handled here, not by the caller. */
+  content: Buffer;
+  contentType?: string;
+};
+
 export type SendEmailInput = {
   to: string;
   subject: string;
@@ -59,6 +66,7 @@ export type SendEmailInput = {
   /** Overrides platformSettings.emailFromName for this one send, e.g. the tenant's own business name. */
   fromName?: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 };
 
 async function sendViaSendGrid(settings: PlatformEmailSettings, input: SendEmailInput) {
@@ -70,6 +78,12 @@ async function sendViaSendGrid(settings: PlatformEmailSettings, input: SendEmail
       subject: input.subject,
       html: input.html,
       replyTo: input.replyTo,
+      attachments: input.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content.toString("base64"),
+        type: a.contentType,
+        disposition: "attachment",
+      })),
     });
   } catch (error) {
     const detail =
@@ -89,6 +103,10 @@ async function sendViaResend(settings: PlatformEmailSettings, input: SendEmailIn
     subject: input.subject,
     html: input.html,
     replyTo: input.replyTo,
+    attachments: input.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+    })),
   });
   if (result.error) {
     throw new Error(`Email send failed (Resend): ${result.error.message}`);
