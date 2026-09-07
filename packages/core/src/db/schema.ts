@@ -1202,10 +1202,18 @@ export const platformSettings = pgTable("platform_settings", {
   stripeSecretKey: text("stripe_secret_key").default(""),
   /** Stripe webhook signing secret, to verify events actually came from Stripe. */
   stripeWebhookSecret: text("stripe_webhook_secret").default(""),
-  emailProvider: text("email_provider").notNull().default("sendgrid"), // 'sendgrid' for now
+  emailProvider: text("email_provider").notNull().default("sendgrid"), // 'sendgrid' | 'resend'
   emailApiKey: text("email_api_key").default(""),
   emailFromAddress: text("email_from_address").default(""),
   emailFromName: text("email_from_name").default("cashish"),
+  /**
+   * The admin's own kill-switch for every AI-powered feature (document
+   * reading, AI report commentary, rule and budget suggestions) — on top of,
+   * not instead of, the existing "are credentials even configured" check in
+   * apps/books/src/lib/ai.ts. Off means those UI sections don't render at
+   * all: no disabled button, no explanatory tooltip, nothing to click.
+   */
+  aiFeaturesEnabled: boolean("ai_features_enabled").notNull().default(true),
   updatedAt: text("updated_at").notNull().default(now),
 });
 

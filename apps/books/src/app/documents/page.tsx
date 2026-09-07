@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/request-context";
 import { listDocuments } from "@/lib/documents";
-import { aiIsConfigured } from "@/lib/ai";
+import { aiAvailable } from "@/lib/ai";
 import { PageHeader } from "@/components/ui";
 import { DocumentsView } from "@/components/DocumentsView";
 
@@ -13,6 +13,7 @@ export default async function DocumentsPage() {
     // if that decision is to read it again or type it in by hand.
     const pending = all.filter((d) => d.status === "pending" || d.status === "failed");
     const done = all.filter((d) => d.status === "confirmed" || d.status === "rejected");
+    const available = await aiAvailable();
 
     return (
       <div>
@@ -20,7 +21,7 @@ export default async function DocumentsPage() {
           title="Documents"
           subtitle="Invoices, receipts and payslips, read into fields. Nothing reaches the books until you say so."
         />
-        <DocumentsView pending={pending} done={done} aiAvailable={aiIsConfigured()} />
+        <DocumentsView pending={pending} done={done} aiAvailable={available} />
       </div>
     );
   });

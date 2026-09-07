@@ -271,38 +271,29 @@ export function DocumentsView({
 
   return (
     <div className="space-y-6">
-      <Card>
-        <h2 className="font-semibold">Add documents</h2>
-        <p className="mt-0.5 text-sm text-ink-faint">
-          Invoices, receipts, payslips — several at once. Each is read into fields and waits here
-          until you confirm it. Nothing reaches the books on its own.
-        </p>
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          accept="application/pdf,image/*"
-          className="hidden"
-          onChange={(e) => e.target.files?.length && upload(e.target.files)}
-        />
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            className="btn-primary"
-            disabled={busy || !aiAvailable}
-            title={aiAvailable ? undefined : "No AI credentials on this deployment"}
-            onClick={() => fileRef.current?.click()}
-          >
-            {busy ? "Reading…" : "Choose files"}
-          </button>
-          {summary && <span className="text-sm text-ink-soft">{summary}</span>}
-        </div>
-        {!aiAvailable && (
-          <p className="mt-2 text-sm text-ink-faint">
-            Reading documents needs AI credentials. Set <code>AI_GATEWAY_API_KEY</code>, or enable
-            AI Gateway on the Vercel project.
+      {aiAvailable && (
+        <Card>
+          <h2 className="font-semibold">Add documents</h2>
+          <p className="mt-0.5 text-sm text-ink-faint">
+            Invoices, receipts, payslips — several at once. Each is read into fields and waits
+            here until you confirm it. Nothing reaches the books on its own.
           </p>
-        )}
-      </Card>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={(e) => e.target.files?.length && upload(e.target.files)}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button className="btn-primary" disabled={busy} onClick={() => fileRef.current?.click()}>
+              {busy ? "Reading…" : "Choose files"}
+            </button>
+            {summary && <span className="text-sm text-ink-soft">{summary}</span>}
+          </div>
+        </Card>
+      )}
 
       {pending.length === 0 ? (
         <EmptyState

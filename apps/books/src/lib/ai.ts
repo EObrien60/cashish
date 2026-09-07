@@ -1,4 +1,8 @@
 import { APICallError } from "ai";
+import { db, schema, first } from "@cashish/core/db";
+import { eq } from "drizzle-orm";
+
+const { platformSettings } = schema;
 
 // ---------------------------------------------------------------------------
 // Talking to a model, through the Vercel AI Gateway.
@@ -45,9 +49,49 @@ export function aiIsConfigured(): boolean {
   return Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
 }
 
+/**
+ * The admin's own kill-switch, independent of whether credentials exist —
+ * set from the admin console, not an env var, so it can be flipped without a
+ * deploy. No row yet (a fresh platform, before anyone has touched Settings)
+ * means enabled, matching the column's own default.
+ */
+export async function aiFeaturesEnabledByAdmin(): Promise<boolean> {
+  const row = first(
+    await db
+      .select({ aiFeaturesEnabled: platformSettings.aiFeaturesEnabled })
+      .from(platformSettings)
+      .where(eq(platformSettings.id, "singleton"))
+      .limit(1),
+  );
+  return row?.aiFeaturesEnabled ?? true;
+}
+
+/**
+ * What a page should actually gate rendering on: credentials configured AND
+ * the admin hasn't turned AI off. Both, not either — an admin toggle can't
+ * light up a feature that has no credentials, and credentials don't bypass
+ * an admin who has deliberately switched it off.
+ *
+ * Callers use this to decide whether to render an AI section AT ALL — not to
+ * render it disabled with an explanation. A feature that isn't available
+ * shouldn't be visible as something you almost could click.
+ */
+export async function aiAvailable(): Promise<boolean> {
+  return aiIsConfigured() && (await aiFeaturesEnabledByAdmin());
+}
+
 export type AiFailure = { ok: false; reason: string };
 export type AiSuccess<T> = { ok: true; value: T; usage?: { input: number; output: number } };
 export type AiResult<T> = AiSuccess<T> | AiFailure;
+
+/**
+ * What every AI-calling server action returns when `aiAvailable()` is false —
+ * checked there too, not just in the UI. A hidden button stops a normal user;
+ * this stops a replayed request or a call from outside the browser entirely.
+ */
+export function aiDisabledFailure(): AiFailure {
+  return { ok: false, reason: "AI features are turned off for this platform." };
+}
 
 /** Spend attribution, so a bill can be traced to a feature and a book. */
 export function gatewayOptions(feature: string, tenantId: string) {

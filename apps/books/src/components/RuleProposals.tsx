@@ -16,10 +16,8 @@ import type { RuleProposal, ProposalRun } from "@/lib/ai-rules";
  * and accepting goes through the ordinary saveRule path.
  */
 export function RuleProposals({
-  aiAvailable,
   accounts,
 }: {
-  aiAvailable: boolean;
   /** Accounts with uncategorised spending, biggest first. */
   accounts: { id: string | null; name: string; uncategorised: number; amount: number }[];
 }) {
@@ -61,8 +59,7 @@ export function RuleProposals({
         </div>
         <button
           className="btn-outline"
-          disabled={busy || !aiAvailable}
-          title={aiAvailable ? undefined : "No AI credentials on this deployment"}
+          disabled={busy}
           onClick={() => {
             setBusy(true);
             setError(null);

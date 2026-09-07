@@ -426,9 +426,17 @@ const PLATFORM_SETTINGS_FIELDS = [
 export async function savePlatformSettings(formData: FormData): Promise<Result> {
   const admin = await requireAdmin();
 
-  const patch: Record<string, string> = {};
+  const patch: Record<string, string | boolean> = {};
   for (const field of PLATFORM_SETTINGS_FIELDS) {
     if (formData.has(field)) patch[field] = String(formData.get(field) ?? "");
+  }
+  // A checkbox is simply absent from FormData when unchecked, which is
+  // indistinguishable from "this form doesn't include this field at all" —
+  // the AI toggle form pairs it with a hidden marker input so presence of
+  // the marker means "read the checkbox," and presence of the checkbox
+  // itself (any value) means checked.
+  if (formData.has("_aiFeaturesToggleSubmitted")) {
+    patch.aiFeaturesEnabled = formData.has("aiFeaturesEnabled");
   }
   if (Object.keys(patch).length === 0) return { ok: true };
 
@@ -437,6 +445,12 @@ export async function savePlatformSettings(formData: FormData): Promise<Result> 
     .from(platformSettings)
     .where(eq(platformSettings.id, "singleton"))
     .limit(1);
+
+  // A secret field logs only whether it was set, never its value. The
+  // boolean toggle logs its actual on/off state — there's nothing to
+  // protect there, and "(set)"/"" would just be confusing for a switch.
+  const describe = (key: string, value: string | boolean | undefined) =>
+    typeof value === "boolean" ? (value ? "on" : "off") : value ? "(set)" : "";
 
   await withAudit(
     admin.id,
@@ -448,11 +462,11 @@ export async function savePlatformSettings(formData: FormData): Promise<Result> 
         ? Object.fromEntries(
             Object.keys(patch).map((k) => [
               k,
-              (existing as unknown as Record<string, string>)[k] ? "(set)" : "",
+              describe(k, (existing as unknown as Record<string, string | boolean>)[k]),
             ]),
           )
         : null,
-      after: Object.fromEntries(Object.keys(patch).map((k) => [k, patch[k] ? "(set)" : ""])),
+      after: Object.fromEntries(Object.keys(patch).map((k) => [k, describe(k, patch[k])])),
     },
     async (trx) => {
       await trx
