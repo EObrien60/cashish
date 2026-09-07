@@ -4,6 +4,11 @@ import { uid } from "./id";
 import { round2 } from "./format";
 import { createTenantPaymentLink } from "@cashish/core/stripe";
 import { sendEmail } from "@cashish/core/email";
+// Dynamic, deliberately: @react-pdf/renderer is a heavy dependency (font
+// layout, hyphenation tables) that only sendInvoiceEmail below ever needs.
+// A static import here would load it into every module that imports
+// anything from this file at all — including every test file that just
+// wants createInvoice, none of which ever send an email.
 
 const { invoices, invoiceLines, payments, settings, customers, vatRates } = schema;
 
@@ -325,7 +330,7 @@ export async function sendInvoiceEmail(id: string) {
   const inv = await getInvoice(id);
   if (!inv) throw new Error("Invoice not found.");
 
-  const [customer, tenantSettings] = await Promise.all([
+  const [customer, tenantSettings, rateRows] = await Promise.all([
     first(
       await db
         .select()
@@ -334,10 +339,12 @@ export async function sendInvoiceEmail(id: string) {
         .limit(1),
     ),
     first(await db.select().from(settings).where(eq(settings.tenantId, tid)).limit(1)),
+    db.select().from(vatRates).where(eq(vatRates.tenantId, tid)),
   ]);
   if (!customer?.email) {
     throw new Error("This customer has no email address on file — add one in Customers.");
   }
+  const vatRateMap = new Map(rateRows.map((v) => [v.id, v]));
 
   const due = round2(inv.total - inv.amountPaid);
   let paymentLinkUrl = inv.stripePaymentLinkUrl;
@@ -354,16 +361,16 @@ export async function sendInvoiceEmail(id: string) {
   }
 
   const businessName = tenantSettings?.businessName || "cashish";
-  const html = [
-    `<p>Hi ${customer.name},</p>`,
-    `<p>Please find invoice <strong>${inv.number}</strong> from ${businessName}, ` +
-      `total <strong>${inv.currency} ${due.toFixed(2)}</strong> due` +
-      `${inv.dueDate ? ` by ${inv.dueDate}` : ""}.</p>`,
-    paymentLinkUrl ? `<p><a href="${paymentLinkUrl}">Pay now</a></p>` : "",
-    `<p>${tenantSettings?.invoiceFooter || "Thank you for your business."}</p>`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const pdfInput = { invoice: inv, customer: customer ?? null, settings: tenantSettings ?? null, vatRates: vatRateMap };
+
+  const [{ invoiceEmailHtml }, { renderInvoicePdf }] = await Promise.all([
+    import("./invoice-email"),
+    import("./invoice-pdf"),
+  ]);
+  const [html, pdf] = await Promise.all([
+    Promise.resolve(invoiceEmailHtml({ ...pdfInput, paymentLinkUrl })),
+    renderInvoicePdf(pdfInput),
+  ]);
 
   await sendEmail({
     to: customer.email,
@@ -371,6 +378,9 @@ export async function sendInvoiceEmail(id: string) {
     html,
     fromName: businessName,
     replyTo: tenantSettings?.email || undefined,
+    attachments: [
+      { filename: `${inv.number}.pdf`, content: pdf, contentType: "application/pdf" },
+    ],
   });
 
   await setInvoiceStatus(id, "sent");
