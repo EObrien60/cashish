@@ -24,6 +24,10 @@ const PUBLIC_PREFIXES = ["/login", "/_next/", "/favicon"];
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
+  if (pathname === "/api/management" || pathname.startsWith("/api/management/")) {
+    // Machine routes authenticate the dedicated token and active admin themselves.
+    return NextResponse.next();
+  }
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }

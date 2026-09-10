@@ -1,0 +1,30 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { NextRequest } from 'next/server';
+import { eq } from 'drizzle-orm';
+import { ensureSchema, scratchEmail, makeTenant, closePool } from './harness';
+import { createAdmin, setAdminDisabled } from '../src/lib/admin-auth';
+import { GET, PATCH } from '../src/app/api/management/[...path]/route';
+import { db, schema } from '@cashish/core/db';
+import { listAudit } from '../src/lib/audit';
+const token='management-test-secret-'.repeat(3);
+let adminId:string;
+const context=(path:string[])=>({params:Promise.resolve({path})});
+const req=(method='GET', body?:unknown, auth=token)=>new NextRequest('http://localhost/api/management/tenants',{method,headers:{authorization:'Bearer '+auth,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+before(async()=>{await ensureSchema();adminId=await createAdmin({email:scratchEmail('management'),password:'safe-test-password-123'});process.env.SAAS_GOD_TOKEN=token;process.env.SAAS_ADMIN_ID=adminId;});
+after(closePool);
+test('unauthenticated and wrong-token requests are rejected',async()=>{
+ assert.equal((await GET(req('GET',undefined,'wrong'),context(['tenants']))).status,401);
+ delete process.env.SAAS_GOD_TOKEN;assert.equal((await GET(req(),context(['tenants']))).status,401);process.env.SAAS_GOD_TOKEN=token;
+});
+test('tenant status update persists with audit, validates input, and respects disabled admin',async()=>{
+ const tenant=await makeTenant('management');
+ await db.insert(schema.subscriptions).values({id:randomUUID(),tenantId:tenant.id,planCode:'sole',status:'active'});
+ assert.equal((await PATCH(req('PATCH',{status:'deleted'}),context(['tenants',tenant.id,'status']))).status,400);
+ assert.equal((await PATCH(req('PATCH',{status:'suspended'}),context(['tenants',tenant.id,'status']))).status,200);
+ const [sub]=await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.tenantId,tenant.id));assert.equal(sub.status,'suspended');
+ assert.ok((await listAudit()).some(a=>a.tenantId===tenant.id&&a.adminEmail.includes('management')));
+ await setAdminDisabled(adminId,true);assert.equal((await GET(req(),context(['tenants']))).status,403);await setAdminDisabled(adminId,false);
+ const response=await GET(req(),context(['tenants']));assert.equal(response.status,200);assert.ok((await response.json()).items.some((r:{id:string})=>r.id===tenant.id));
+});

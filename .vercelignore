@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+.git
+CLAUDE.md
+AGENTS.md
+**/.env*
+**/*.test.ts
+server/tests
+*.pdf
