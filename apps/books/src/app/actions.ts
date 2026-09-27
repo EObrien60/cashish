@@ -84,6 +84,18 @@ import {
 import { importRpnJson } from "@/lib/rpn-import";
 import { createPerson, setTransactionEmployee, setPersonStatus } from "@/lib/people";
 import {
+  createContractor,
+  updateContractor,
+  createTimesheet,
+  deleteTimesheet,
+  importUpworkCsv,
+  suggestPayments,
+  linkPayment,
+  unlinkPayment,
+  type ContractorInput,
+  type TimesheetInput,
+} from "@/lib/contractors";
+import {
   createVendor,
   updateVendor,
   setVendorArchived,
@@ -1113,5 +1125,70 @@ export async function deleteBillAction(id: string, vendorId: string) {
     await deleteBill(id);
     revalidatePath("/vendors");
     revalidatePath(`/vendors/${vendorId}`);
+  });
+}
+
+// --- Contractors ---------------------------------------------------------------
+
+export async function saveContractorAction(data: ContractorInput & { id?: string }) {
+  return withCapability("books:write", async () => {
+    if (!data.name?.trim()) return { error: "A name is required." };
+    if (data.id) {
+      const { id, ...rest } = data;
+      await updateContractor(id, rest);
+    } else {
+      const { created } = await createContractor(data);
+      if (!created) return { error: "There is already a contractor with that name." };
+    }
+    revalidatePath("/contractors");
+    return { ok: true };
+  });
+}
+
+export async function saveTimesheetAction(data: TimesheetInput) {
+  return withCapability("books:write", async () => {
+    if (!data.contractorId || !data.periodEnd) return { error: "Pick a contractor and a period end." };
+    await createTimesheet(data);
+    revalidatePath("/contractors");
+    return { ok: true };
+  });
+}
+
+export async function deleteTimesheetAction(id: string) {
+  return withCapability("books:write", async () => {
+    await deleteTimesheet(id);
+    revalidatePath("/contractors");
+  });
+}
+
+export async function importUpworkCsvAction(formData: FormData) {
+  const file = formData.get("file") as File | null;
+  if (!file) {
+    return { parsed: 0, imported: 0, duplicates: 0, skipped: 0, contractorsCreated: 0, errors: ["No file provided."] };
+  }
+  const text = await file.text();
+  return withCapability("books:import", async () => {
+    const summary = await importUpworkCsv(text);
+    revalidatePath("/contractors");
+    return summary;
+  });
+}
+
+export async function suggestTimesheetPaymentsAction(timesheetIds: string[]) {
+  return withCapability("books:read", () => suggestPayments(timesheetIds));
+}
+
+export async function linkTimesheetPaymentAction(transactionId: string, timesheetIds: string[]) {
+  return withCapability("books:write", async () => {
+    const result = await linkPayment(transactionId, timesheetIds);
+    revalidatePath("/contractors");
+    return result;
+  });
+}
+
+export async function unlinkTimesheetPaymentAction(timesheetId: string, transactionId: string) {
+  return withCapability("books:write", async () => {
+    await unlinkPayment(timesheetId, transactionId);
+    revalidatePath("/contractors");
   });
 }

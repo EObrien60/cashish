@@ -70,3 +70,4 @@ export const IconTruck = (p: P) => (<Svg {...p}><path d="M2 6h12v10H2z" /><path 
 export const IconBank = (p: P) => (<Svg {...p}><path d="M3 9 12 4l9 5" /><path d="M5 10v8M10 10v8M14 10v8M19 10v8" /><path d="M3 20h18" /></Svg>);
 export const IconInbox = (p: P) => (<Svg {...p}><path d="M3 13 6 4h12l3 9v7H3z" /><path d="M3 13h5l1.5 3h5L16 13h5" /></Svg>);
 export const IconTrend = (p: P) => (<Svg {...p}><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></Svg>);
+export const IconClock = (p: P) => (<Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Svg>);

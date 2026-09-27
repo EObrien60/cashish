@@ -935,6 +935,88 @@ export type Vendor = typeof vendors.$inferSelect;
 export type Bill = typeof bills.$inferSelect;
 export type BillPayment = typeof billPayments.$inferSelect;
 
+// --- Contractors and timesheets ---------------------------------------------
+// People who bill you by the hour, usually through a platform like Upwork. Kept
+// apart from employees on purpose: no PPSN, no RPN, no pay run. A platform
+// charges one lump a week for everybody's hours plus its fee, so one bank line
+// settles MANY timesheets — hence the allocation table rather than a column.
+
+export const contractors = pgTable(
+  "contractors",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    email: text("email").default(""),
+    platform: text("platform").notNull().default("direct"), // upwork | direct
+    /** The name or id the platform knows them by; how imports find them. */
+    platformRef: text("platform_ref").default(""),
+    defaultRate: doublePrecision("default_rate").notNull().default(0),
+    currency: text("currency").notNull().default("EUR"),
+    status: text("status").notNull().default("active"), // active | inactive
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("contractor_tenant_idx").on(t.tenantId)],
+);
+
+export const timesheets = pgTable(
+  "timesheets",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    contractorId: text("contractor_id")
+      .notNull()
+      .references(() => contractors.id, { onDelete: "restrict" }),
+    periodStart: text("period_start"),
+    periodEnd: text("period_end").notNull(),
+    hours: doublePrecision("hours").notNull().default(0),
+    rate: doublePrecision("rate").notNull().default(0),
+    /** hours × rate by default, but editable: a fixed-price milestone has no hours. */
+    amount: doublePrecision("amount").notNull().default(0),
+    currency: text("currency").notNull().default("EUR"),
+    source: text("source").notNull().default("manual"), // upwork_csv | manual | upwork_api
+    /** The platform's own id for the line, so re-importing a file inserts nothing. */
+    externalRef: text("external_ref"),
+    memo: text("memo").default(""),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("timesheet_contractor_idx").on(t.tenantId, t.contractorId),
+    index("timesheet_period_idx").on(t.tenantId, t.periodEnd),
+    uniqueIndex("timesheet_external_ref_idx")
+      .on(t.tenantId, t.externalRef)
+      .where(sql`${t.externalRef} is not null`),
+  ],
+);
+
+export const timesheetPayments = pgTable(
+  "timesheet_payments",
+  {
+    id: text("id").primaryKey(),
+    tenantId: tenantId(),
+    timesheetId: text("timesheet_id")
+      .notNull()
+      .references(() => timesheets.id, { onDelete: "cascade" }),
+    transactionId: text("transaction_id").notNull(),
+    amount: doublePrecision("amount").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("tspay_timesheet_idx").on(t.tenantId, t.timesheetId),
+    index("tspay_tx_idx").on(t.tenantId, t.transactionId),
+    // transactions has a composite primary key, so this FK must match it.
+    foreignKey({
+      columns: [t.tenantId, t.transactionId],
+      foreignColumns: [transactions.tenantId, transactions.id],
+      name: "tspay_tx_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
+export type Contractor = typeof contractors.$inferSelect;
+export type Timesheet = typeof timesheets.$inferSelect;
+export type TimesheetPayment = typeof timesheetPayments.$inferSelect;
+
 // --- Identity, membership and machine credentials ---------------------------
 // Appended after the domain tables because they reference tenants and are what
 // resolves a request into the tenant context the domain tables are scoped by.
