@@ -11,6 +11,7 @@ import { IconDownload, IconFile, IconCheck, IconTrash, IconRepeat } from "@/comp
 import {
   updatePayslipAction,
   recomputePayslipAction,
+  setPayslipHoursAction,
   setPayRunStatusAction,
   deletePayRunAction,
 } from "@/app/actions";
@@ -36,6 +37,9 @@ function netOf(s: Pick<Payslip, "grossPay" | "pensionEmployee" | "incomeTaxPaid"
   return round2(s.grossPay - s.pensionEmployee - s.incomeTaxPaid - s.employeePrsi - s.uscPaid - s.lptDeducted - s.otherDeductions);
 }
 
+// Hourly slips carry the rate snapshotted when the run was created.
+const isHourly = (s: Slip) => s.hourlyRate > 0 || s.employee.payBasis === "hourly";
+
 export function PayRunBuilder({ run }: { run: Run }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -59,6 +63,12 @@ export function PayRunBuilder({ run }: { run: Run }) {
   function save(id: string, key: keyof Payslip, value: number) {
     startTransition(async () => {
       await updatePayslipAction(id, { [key]: value } as Partial<Payslip>);
+    });
+  }
+  function saveHours(id: string, hours: number) {
+    startTransition(async () => {
+      await setPayslipHoursAction(id, hours);
+      router.refresh();
     });
   }
   function recompute(id: string) {
@@ -156,7 +166,37 @@ export function PayRunBuilder({ run }: { run: Run }) {
                     {!s.rpnNumber && <span className="text-amber-600"> · no RPN</span>}
                   </div>
                 </td>
-                {FIELDS.map((f) => (
+                {FIELDS.map((f) =>
+                  f.key === "grossPay" && isHourly(s) ? (
+                    <td key={f.key} className="td">
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number"
+                          step="0.25"
+                          aria-label="Hours"
+                          disabled={finalised}
+                          className="input tabular w-20 py-1 text-right disabled:bg-paper/40"
+                          value={String(s.hours)}
+                          onChange={(e) => {
+                            const hours = Number(e.target.value) || 0;
+                            setSlips((ls) =>
+                              ls.map((x) => {
+                                if (x.id !== s.id) return x;
+                                const next = { ...x, hours, grossPay: round2(hours * x.hourlyRate) };
+                                next.netPay = netOf(next);
+                                return next;
+                              }),
+                            );
+                          }}
+                          onBlur={(e) => !finalised && saveHours(s.id, Number(e.target.value) || 0)}
+                        />
+                        <span className="text-xs text-ink-faint">h</span>
+                      </div>
+                      <div className="mt-0.5 whitespace-nowrap text-right text-xs text-ink-faint">
+                        @ {money(s.hourlyRate)} = <span className="tabular text-ink">{money(s.grossPay)}</span>
+                      </div>
+                    </td>
+                  ) : (
                   <td key={f.key} className="td">
                     <input
                       type="number"
@@ -168,7 +208,8 @@ export function PayRunBuilder({ run }: { run: Run }) {
                       onBlur={(e) => !finalised && save(s.id, f.key, Number(e.target.value) || 0)}
                     />
                   </td>
-                ))}
+                  ),
+                )}
                 <td className="td text-right tabular font-semibold">{money(s.netPay)}</td>
                 <td className="td">
                   <div className="flex items-center justify-end gap-1">

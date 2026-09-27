@@ -19,6 +19,8 @@ type Form = {
   email: string;
   startDate: string;
   director: string;
+  payBasis: string;
+  hourlyRate: string;
   standardGross: string;
   pensionEmployeePct: string;
   prsiClass: string;
@@ -33,6 +35,8 @@ const BLANK: Form = {
   email: "",
   startDate: "",
   director: "",
+  payBasis: "salary",
+  hourlyRate: "0",
   standardGross: "0",
   pensionEmployeePct: "0",
   prsiClass: "A",
@@ -70,6 +74,8 @@ export function EmployeesView({
       email: e.email ?? "",
       startDate: e.startDate ?? "",
       director: e.director ?? "",
+      payBasis: e.payBasis,
+      hourlyRate: String(e.hourlyRate),
       standardGross: String(e.standardGross),
       pensionEmployeePct: String((e.pensionEmployeePct ?? 0) * 100),
       prsiClass: e.prsiClass ?? "A",
@@ -98,6 +104,8 @@ export function EmployeesView({
         dateOfLeaving: editing?.dateOfLeaving ?? null,
         director: form.director,
         payFrequency: "Monthly",
+        payBasis: form.payBasis === "hourly" ? "hourly" : "salary",
+        hourlyRate: Number(form.hourlyRate) || 0,
         standardGross: Number(form.standardGross) || 0,
         pensionEmployeePct: (Number(form.pensionEmployeePct) || 0) / 100,
         prsiClass: form.prsiClass,
@@ -145,7 +153,7 @@ export function EmployeesView({
                 <th className="th">PPSN</th>
                 <th className="th">Type</th>
                 <th className="th">PRSI</th>
-                <th className="th text-right">Monthly gross</th>
+                <th className="th text-right">Pay</th>
                 <th className="th text-right">Paid from bank</th>
                 <th className="th text-right">Payments</th>
                 <th className="th">Status</th>
@@ -173,7 +181,9 @@ export function EmployeesView({
                         : "Employee"}
                   </td>
                   <td className="td text-ink-soft">Class {e.prsiClass}</td>
-                  <td className="td text-right tabular">{money(e.standardGross)}</td>
+                  <td className="td text-right tabular">
+                    {e.payBasis === "hourly" ? `${money(e.hourlyRate)}/hr` : money(e.standardGross)}
+                  </td>
                   <td className="td text-right tabular">
                     {paid[e.id] ? money(paid[e.id].paid) : "—"}
                   </td>
@@ -261,9 +271,23 @@ export function EmployeesView({
             <input type="date" className="input" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
           </div>
           <div>
-            <label className="label">Default monthly gross (€)</label>
-            <input type="number" step="0.01" className="input tabular" value={form.standardGross} onChange={(e) => set("standardGross", e.target.value)} />
+            <label className="label">Pay basis</label>
+            <select className="input" value={form.payBasis} onChange={(e) => set("payBasis", e.target.value)}>
+              <option value="salary">Salary (monthly gross)</option>
+              <option value="hourly">Hourly (hours each pay run)</option>
+            </select>
           </div>
+          {form.payBasis === "hourly" ? (
+            <div>
+              <label className="label">Hourly rate (€)</label>
+              <input type="number" step="0.01" className="input tabular" value={form.hourlyRate} onChange={(e) => set("hourlyRate", e.target.value)} />
+            </div>
+          ) : (
+            <div>
+              <label className="label">Default monthly gross (€)</label>
+              <input type="number" step="0.01" className="input tabular" value={form.standardGross} onChange={(e) => set("standardGross", e.target.value)} />
+            </div>
+          )}
           <div>
             <label className="label">Employee pension (% of gross)</label>
             <input type="number" step="0.1" className="input tabular" value={form.pensionEmployeePct} onChange={(e) => set("pensionEmployeePct", e.target.value)} />

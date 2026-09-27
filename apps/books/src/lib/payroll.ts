@@ -321,13 +321,17 @@ export async function createPayRun(taxYear: number, periodNo: number, payDate: s
     .where(and(eq(employees.tenantId, tid), eq(employees.status, "active")));
   for (const e of emps) {
     const rpn = await currentRpn(e.id, taxYear);
-    const gross = round2(e.standardGross);
+    // Hourly staff start at zero hours; gross comes from the hours entered.
+    const hourly = e.payBasis === "hourly";
+    const gross = hourly ? 0 : round2(e.standardGross);
     const d = await computeDeductions(e, taxYear, periodNo, gross, rpn);
     const slip = {
       id: uid(),
       tenantId: tid,
       payRunId: id,
       employeeId: e.id,
+      hours: 0,
+      hourlyRate: hourly ? e.hourlyRate : 0,
       rpnNumber: d.rpnNumber,
       incomeTaxBasis: d.incomeTaxBasis,
       exclusionOrder: d.exclusionOrder,
@@ -472,6 +476,25 @@ export async function recomputePayslip(id: string) {
     uscPaid: d.uscPaid,
     lptDeducted: d.lptDeducted,
   });
+}
+
+export function grossFromHours(hours: number, rate: number): number {
+  return round2(hours * rate);
+}
+
+// Hours on an hourly slip set its gross, and a new gross means new deductions.
+export async function setPayslipHours(id: string, hours: number) {
+  const tid = tenantId();
+  const slip = first(
+    await db
+      .select()
+      .from(payslips)
+      .where(and(eq(payslips.tenantId, tid), eq(payslips.id, id)))
+      .limit(1),
+  );
+  if (!slip) return;
+  await updatePayslip(id, { hours, grossPay: grossFromHours(hours, slip.hourlyRate) });
+  await recomputePayslip(id);
 }
 
 export async function setPayRunStatus(id: string, status: "draft" | "finalised") {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { withTenant } from "@/lib/request-context";
 import { getSettings } from "@/lib/lookups";
 import { getPayslip } from "@/lib/payroll";
-import { money, fmtDate } from "@/lib/format";
+import { money, fmtDate, round2 } from "@/lib/format";
 import { Card } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { notFound } from "next/navigation";
@@ -80,6 +80,9 @@ export default async function PayslipPage({
           <div className="mt-6 grid grid-cols-2 gap-8">
             <div>
               <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">Payments</div>
+              {slip.hourlyRate > 0 && (
+                <Row label={`Hours ${slip.hours} @ ${money(slip.hourlyRate)}`} value={money(slip.grossPay)} />
+              )}
               <Row label="Gross pay" value={money(slip.grossPay)} />
               <Row label="Total payments" value={money(slip.grossPay)} strong />
             </div>
@@ -100,7 +103,16 @@ export default async function PayslipPage({
             <span className="text-2xl font-bold tabular text-brand-dark">{money(slip.netPay)}</span>
           </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-4 text-xs text-ink-faint">
+          <div className="mt-6 text-sm">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              Employer contributions (not deducted from your pay)
+            </div>
+            <Row label="PRSI (employer)" value={money(slip.employerPrsi)} />
+            {slip.pensionEmployer > 0 && <Row label="Pension (employer)" value={money(slip.pensionEmployer)} />}
+            <Row label="Total cost to employer" value={money(round2(slip.grossPay + slip.employerPrsi + slip.pensionEmployer))} strong />
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-4 text-xs text-ink-faint">
             <div>
               <div className="font-medium text-ink-soft">Tax credits (period)</div>
               <div className="tabular">{money(slip.taxCreditsThisPeriod)}</div>
@@ -108,10 +120,6 @@ export default async function PayslipPage({
             <div>
               <div className="font-medium text-ink-soft">Cut-off (period)</div>
               <div className="tabular">{money(slip.standardRateCutOff)}</div>
-            </div>
-            <div>
-              <div className="font-medium text-ink-soft">Employer PRSI</div>
-              <div className="tabular">{money(slip.employerPrsi)}</div>
             </div>
           </div>
         </Card>

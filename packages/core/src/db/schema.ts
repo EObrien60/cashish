@@ -700,6 +700,8 @@ export const employees = pgTable(
     director: text("director").default(""), // ''|'proprietary'|'non-proprietary'
     payFrequency: text("pay_frequency").notNull().default("Monthly"),
     standardGross: doublePrecision("standard_gross").notNull().default(0), // default monthly gross
+    payBasis: text("pay_basis").notNull().default("salary"), // salary|hourly
+    hourlyRate: doublePrecision("hourly_rate").notNull().default(0),
     pensionEmployeePct: doublePrecision("pension_employee_pct").notNull().default(0),
     prsiClass: text("prsi_class").default("A"), // fallback if no RPN
     status: text("status").notNull().default("active"), // active|leaver
@@ -786,6 +788,9 @@ export const payslips = pgTable(
     taxCreditsThisPeriod: doublePrecision("tax_credits_this_period").default(0),
     standardRateCutOff: doublePrecision("standard_rate_cutoff").default(0),
     // pay + statutory deductions (all overridable)
+    // hourly slips: gross = hours × the rate snapshotted when the run was created
+    hours: doublePrecision("hours").notNull().default(0),
+    hourlyRate: doublePrecision("hourly_rate").notNull().default(0),
     grossPay: doublePrecision("gross_pay").notNull().default(0),
     pensionEmployee: doublePrecision("pension_employee").notNull().default(0),
     pensionEmployer: doublePrecision("pension_employer").notNull().default(0),
