@@ -76,6 +76,7 @@ import {
   createPayRun,
   updatePayslip,
   recomputePayslip,
+  setPayslipHours,
   setPayRunStatus,
   deletePayRun,
   type EmployeeInput,
@@ -601,6 +602,13 @@ export async function updatePayslipAction(id: string, patch: Partial<Payslip>) {
 export async function recomputePayslipAction(id: string) {
   return withCapability("books:write", async () => {
     await recomputePayslip(id);
+    revalidatePath("/payroll");
+  });
+}
+
+export async function setPayslipHoursAction(id: string, hours: number) {
+  return withCapability("books:write", async () => {
+    await setPayslipHours(id, hours);
     revalidatePath("/payroll");
   });
 }
