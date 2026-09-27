@@ -65,3 +65,8 @@ export const IconFile = (p: P) => (<Svg {...p}><path d="M6 2h9l5 5v15H6z" /><pat
 export const IconPayroll = (p: P) => (<Svg {...p}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><circle cx="12" cy="13" r="2.5" /></Svg>);
 export const IconDownload = (p: P) => (<Svg {...p}><path d="M12 4v12M7 11l5 5 5-5" /><path d="M4 20h16" /></Svg>);
 export const IconMail = (p: P) => (<Svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></Svg>);
+export const IconContract = (p: P) => (<Svg {...p}><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /><path d="M9 17c1-1.5 2-1.5 2.5 0s1.5 1.5 2.5 0 1.5-1 2.5 0" /></Svg>);
+export const IconTruck = (p: P) => (<Svg {...p}><path d="M2 6h12v10H2z" /><path d="M14 10h4l4 4v2h-8" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></Svg>);
+export const IconBank = (p: P) => (<Svg {...p}><path d="M3 9 12 4l9 5" /><path d="M5 10v8M10 10v8M14 10v8M19 10v8" /><path d="M3 20h18" /></Svg>);
+export const IconInbox = (p: P) => (<Svg {...p}><path d="M3 13 6 4h12l3 9v7H3z" /><path d="M3 13h5l1.5 3h5L16 13h5" /></Svg>);
+export const IconTrend = (p: P) => (<Svg {...p}><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></Svg>);

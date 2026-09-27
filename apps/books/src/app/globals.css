@@ -8,9 +8,12 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* Sidebar section labels are a desktop-only affordance (shown via .desktop). */
+/* Sidebar section labels. The desktop shell restyles them in desktop.css. */
 .nav-section {
-  display: none;
+  @apply px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-ink-faint;
+}
+.nav-group:first-child .nav-section {
+  @apply pt-1;
 }
 
 html,
