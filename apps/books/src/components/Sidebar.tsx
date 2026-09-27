@@ -23,6 +23,7 @@ import {
   IconBank,
   IconInbox,
   IconTrend,
+  IconClock,
 } from "./icons";
 import { activeHref } from "@/lib/nav-active";
 
@@ -57,6 +58,7 @@ const SECTIONS: {
     items: [
       { href: "/vendors", label: "Suppliers", icon: IconTruck, businessOnly: true },
       { href: "/payroll", label: "Payroll", icon: IconPayroll, businessOnly: true },
+      { href: "/contractors", label: "Contractors", icon: IconClock, businessOnly: true },
     ],
   },
   {
