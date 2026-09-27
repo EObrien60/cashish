@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Payslip, Employee, PayRun } from "@cashish/core/db";
 import { money, round2, fmtDate } from "@/lib/format";
-import { Card, StatusBadge } from "@/components/ui";
+import { Card, StatCard, StatusBadge } from "@/components/ui";
+import { payRunTotals } from "@/lib/payrun-totals";
 import { IconDownload, IconFile, IconCheck, IconTrash, IconRepeat } from "@/components/icons";
 import {
   updatePayslipAction,
@@ -43,17 +44,7 @@ export function PayRunBuilder({ run }: { run: Run }) {
 
   useEffect(() => setSlips(run.slips), [run.slips]);
 
-  const totals = slips.reduce(
-    (a, s) => ({
-      gross: a.gross + s.grossPay,
-      paye: a.paye + s.incomeTaxPaid,
-      usc: a.usc + s.uscPaid,
-      eePrsi: a.eePrsi + s.employeePrsi,
-      erPrsi: a.erPrsi + s.employerPrsi,
-      net: a.net + s.netPay,
-    }),
-    { gross: 0, paye: 0, usc: 0, eePrsi: 0, erPrsi: 0, net: 0 },
-  );
+  const totals = payRunTotals(slips);
 
   function editLocal(id: string, key: keyof Payslip, value: number) {
     setSlips((ls) =>
@@ -120,6 +111,26 @@ export function PayRunBuilder({ run }: { run: Run }) {
         </div>
       </div>
 
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Total cost"
+          value={money(totals.totalCost)}
+          sub={`${money(totals.gross)} gross + ${money(totals.erPrsi)} employer PRSI`}
+          tone="out"
+        />
+        <StatCard
+          label="Net to employees"
+          value={money(totals.netToEmployees)}
+          sub={totals.elsewhere ? `plus ${money(totals.elsewhere)} pension / other deductions` : `${slips.length} payslip${slips.length === 1 ? "" : "s"}`}
+          tone="brand"
+        />
+        <StatCard
+          label="Net to Revenue"
+          value={money(totals.netToRevenue)}
+          sub={`PAYE ${money(totals.paye)} · USC ${money(totals.usc)} · PRSI ${money(round2(totals.eePrsi + totals.erPrsi))}${totals.lpt ? ` · LPT ${money(totals.lpt)}` : ""}`}
+        />
+      </div>
+
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[900px]">
           <thead className="border-b border-line bg-paper/60">
@@ -183,7 +194,7 @@ export function PayRunBuilder({ run }: { run: Run }) {
               <td className="td text-right tabular">{money(totals.eePrsi)}</td>
               <td className="td text-right tabular">{money(totals.erPrsi)}</td>
               <td className="td" colSpan={2}></td>
-              <td className="td text-right tabular text-brand">{money(totals.net)}</td>
+              <td className="td text-right tabular text-brand">{money(totals.netToEmployees)}</td>
               <td className="td"></td>
             </tr>
           </tfoot>
