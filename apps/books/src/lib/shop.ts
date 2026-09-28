@@ -1,5 +1,5 @@
 import { db, schema, first, runInTenant, tenantId } from "@cashish/core/db";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, type SQL } from "drizzle-orm";
 import { extname } from "node:path";
 import { round2 } from "./format";
 import { putBlob, deleteBlob } from "./storage";
@@ -32,6 +32,25 @@ export type Shop = {
   stripeSecretKey: string;
 };
 
+async function loadShop(where: SQL): Promise<(Shop & { tenantId: string }) | null> {
+  const row = first(
+    await db
+      .select({
+        tenantId: tenants.id,
+        slug: tenants.slug,
+        currency: tenants.currency,
+        name: settings.businessName,
+        shipping: settings.shopShipping,
+        stripeSecretKey: settings.stripeSecretKey,
+      })
+      .from(tenants)
+      .innerJoin(settings, eq(settings.tenantId, tenants.id))
+      .where(and(where, eq(settings.shopEnabled, true)))
+      .limit(1),
+  );
+  return row ? { ...row, stripeSecretKey: row.stripeSecretKey ?? "" } : null;
+}
+
 /**
  * Resolves an enabled shop by slug and runs fn in that tenant's context, as a
  * viewer. Returns null for an unknown slug or a shop that is switched off — the
@@ -41,30 +60,28 @@ export async function withShop<T>(
   slug: string,
   fn: (shop: Shop) => Promise<T>,
 ): Promise<T | null> {
-  const row = first(
-    await db
-      .select({
-        tenantId: tenants.id,
-        currency: tenants.currency,
-        name: settings.businessName,
-        shipping: settings.shopShipping,
-        stripeSecretKey: settings.stripeSecretKey,
-      })
-      .from(tenants)
-      .innerJoin(settings, eq(settings.tenantId, tenants.id))
-      .where(and(eq(tenants.slug, slug), eq(settings.shopEnabled, true)))
-      .limit(1),
-  );
-  if (!row) return null;
-  const shop: Shop = {
-    slug,
-    name: row.name,
-    currency: row.currency,
-    shipping: row.shipping,
-    stripeSecretKey: row.stripeSecretKey ?? "",
-  };
-  return runInTenant({ tenantId: row.tenantId, role: "viewer", actor: "shop" }, () => fn(shop));
+  const found = await loadShop(eq(tenants.slug, slug));
+  if (!found) return null;
+  const { tenantId: id, ...shop } = found;
+  return runInTenant({ tenantId: id, role: "viewer", actor: "shop" }, () => fn(shop));
 }
+
+/** The current tenant's shop, or null while it is switched off. For the API. */
+export async function currentShop(): Promise<Shop | null> {
+  const found = await loadShop(eq(tenants.id, tenantId()));
+  if (!found) return null;
+  const { tenantId: _id, ...shop } = found;
+  return shop;
+}
+
+/**
+ * Stripe metadata for a shop checkout. The tenant id is what lets an order
+ * lookup refuse a session that some other shop created on a shared Stripe account.
+ */
+export const checkoutMetadata = (reference?: string): Record<string, string> => ({
+  cashish_tenant: tenantId(),
+  ...(reference ? { reference } : {}),
+});
 
 export type ShopProduct = {
   id: string;

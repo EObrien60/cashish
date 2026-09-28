@@ -1,5 +1,5 @@
 import { createTenantShopCheckout } from "@cashish/core/stripe";
-import { withShop, resolveCart } from "@/lib/shop";
+import { withShop, resolveCart, checkoutMetadata } from "@/lib/shop";
 import { appOrigin } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       if (!shop.stripeSecretKey) return null;
       const cart = await resolveCart(form.entries());
       if (cart.length === 0) return `${shopUrl}?empty=1`;
-      return createTenantShopCheckout(shop.stripeSecretKey, {
+      const session = await createTenantShopCheckout(shop.stripeSecretKey, {
         items: cart.map(({ product, quantity }) => ({
           name: product.name,
           description: product.description,
@@ -28,7 +28,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         collectAddress: cart.some(({ product }) => product.kind === "good"),
         successUrl: `${shopUrl}?paid=1`,
         cancelUrl: shopUrl,
+        metadata: checkoutMetadata(),
       });
+      return session.url;
     });
   } catch (e) {
     // Most often a revoked or wrong Stripe key on the tenant's side. The message
