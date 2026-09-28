@@ -61,6 +61,7 @@ import {
   type RecurringInput,
 } from "@/lib/recurring";
 import { saveReceipt, deleteReceipt, ALLOWED_MIME } from "@/lib/receipts";
+import { setProductPhoto } from "@/lib/shop";
 import {
   saveRule,
   deleteRule,
@@ -336,21 +337,23 @@ export async function saveProduct(data: {
   kind: string;
   incomeCategoryId: string | null;
   sku: string;
-}) {
+  shopVisible?: boolean;
+}): Promise<string> {
   return withCapability("books:write", async () => {
     const tid = tenantId();
-    if (data.id) {
-      const { id, ...rest } = data;
+    const { id: existing, ...rest } = data;
+    const id = existing ?? uid();
+    if (existing) {
       await db
         .update(products)
         .set(rest)
         .where(and(eq(products.tenantId, tid), eq(products.id, id)));
     } else {
-      const { id: _ignore, ...rest } = data;
-      await db.insert(products).values({ id: uid(), tenantId: tid, ...rest });
+      await db.insert(products).values({ id, tenantId: tid, ...rest });
     }
     revalidatePath("/products");
     revalidatePath("/invoices");
+    return id;
   });
 }
 
@@ -361,6 +364,26 @@ export async function archiveProduct(id: string, archived: boolean) {
       .set({ archived })
       .where(and(eq(products.tenantId, tenantId()), eq(products.id, id)));
     revalidatePath("/products");
+  });
+}
+
+export async function uploadProductPhoto(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const productId = String(formData.get("productId") ?? "");
+  const file = formData.get("file") as File | null;
+  if (!productId || !file) return { ok: false, error: "Missing file." };
+  // Under the 4 MB server-action body cap (next.config.mjs), with room for the form.
+  if (file.size > 3.5 * 1024 * 1024) return { ok: false, error: "Max 3.5 MB." };
+  const bytes = Buffer.from(await file.arrayBuffer());
+  return withCapability("books:write", async () => {
+    try {
+      await setProductPhoto(productId, { name: file.name, type: file.type, bytes });
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+    revalidatePath("/products");
+    return { ok: true };
   });
 }
 

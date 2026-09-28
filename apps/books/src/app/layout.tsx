@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
 // Screens that stand alone, with no sidebar and no tenant: you are not in a
 // business yet when you are looking at them.
-const BARE_PREFIXES = ["/login", "/accept-invite", "/register", "/pricing", "/oauth/"];
+const BARE_PREFIXES = ["/login", "/accept-invite", "/register", "/pricing", "/oauth/", "/shop/"];
 
 export default async function RootLayout({
   children,

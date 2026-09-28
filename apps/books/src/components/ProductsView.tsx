@@ -8,7 +8,7 @@ import { money, pct } from "@/lib/format";
 import { Card, EmptyState } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { IconPlus, IconEdit } from "@/components/icons";
-import { saveProduct, archiveProduct } from "@/app/actions";
+import { saveProduct, archiveProduct, uploadProductPhoto } from "@/app/actions";
 
 type Usage = { units: number; net: number; lines: number };
 
@@ -18,9 +18,11 @@ type Props = {
   categories: Category[];
   /** Keyed by product id. Absent means it has never been invoiced. */
   usage?: Record<string, Usage>;
+  /** Public shop URL when the shop is switched on, else null. */
+  shopUrl?: string | null;
 };
 
-export function ProductsView({ products, vatRates, categories, usage = {} }: Props) {
+export function ProductsView({ products, vatRates, categories, usage = {}, shopUrl = null }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -36,14 +38,19 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
     kind: "service",
     incomeCategoryId: incomeCats[0]?.id ?? "",
     sku: "",
+    shopVisible: false,
   };
   const [form, setForm] = useState(EMPTY);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoError, setPhotoError] = useState("");
 
   const vatMap = new Map(vatRates.map((v) => [v.id, v]));
 
   function openNew() {
     setEditing(null);
     setForm(EMPTY);
+    setPhoto(null);
+    setPhotoError("");
     setOpen(true);
   }
   function openEdit(p: Product) {
@@ -56,16 +63,19 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
       kind: p.kind,
       incomeCategoryId: p.incomeCategoryId ?? "",
       sku: p.sku ?? "",
+      shopVisible: p.shopVisible,
     });
+    setPhoto(null);
+    setPhotoError("");
     setOpen(true);
   }
-  function set<K extends keyof typeof form>(k: K, v: string) {
+  function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
   function save() {
     if (!form.name.trim()) return;
     startTransition(async () => {
-      await saveProduct({
+      const id = await saveProduct({
         id: editing?.id,
         name: form.name,
         description: form.description,
@@ -74,7 +84,19 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
         kind: form.kind,
         incomeCategoryId: form.incomeCategoryId || null,
         sku: form.sku,
+        shopVisible: form.shopVisible,
       });
+      if (photo) {
+        const fd = new FormData();
+        fd.set("productId", id);
+        fd.set("file", photo);
+        const res = await uploadProductPhoto(fd);
+        if (!res.ok) {
+          setPhotoError(res.error ?? "Photo upload failed.");
+          router.refresh();
+          return;
+        }
+      }
       setOpen(false);
       router.refresh();
     });
@@ -107,6 +129,7 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
               <tr>
                 <th className="th">Name</th>
                 <th className="th">Type</th>
+                <th className="th">Shop</th>
                 <th className="th">SKU</th>
                 <th className="th text-right">Unit price (ex VAT)</th>
                 <th className="th text-right">VAT</th>
@@ -134,6 +157,7 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
                       )}
                     </td>
                     <td className="td capitalize text-ink-soft">{p.kind}</td>
+                    <td className="td text-ink-soft">{p.shopVisible ? "Listed" : "—"}</td>
                     <td className="td text-ink-soft tabular">{p.sku || "—"}</td>
                     <td className="td text-right tabular font-medium">
                       {money(p.unitPrice)}
@@ -259,6 +283,38 @@ export function ProductsView({ products, vatRates, categories, usage = {} }: Pro
                 onChange={(e) => set("sku", e.target.value)}
               />
             </div>
+          </div>
+          <div className="rounded-lg border border-line p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.shopVisible}
+                onChange={(e) => set("shopVisible", e.target.checked)}
+              />
+              Show in shop
+              {shopUrl ? (
+                <a href={shopUrl} target="_blank" className="ml-auto text-xs text-brand hover:underline">
+                  View shop
+                </a>
+              ) : (
+                <span className="ml-auto text-xs text-ink-faint">Shop is off — turn it on in Settings</span>
+              )}
+            </label>
+            <label className="label mt-3">
+              Photo{editing?.photoPath ? " (one on file — choose a file to replace it)" : ""}
+            </label>
+            <input
+              className="input"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                // Checked here too: past the body cap the request dies before the action runs.
+                setPhotoError(f && f.size > 3.5 * 1024 * 1024 ? "Max 3.5 MB." : "");
+                setPhoto(f && f.size <= 3.5 * 1024 * 1024 ? f : null);
+              }}
+            />
+            {photoError && <p className="mt-1 text-xs text-money-out">{photoError}</p>}
           </div>
           <div>
             <label className="label">Income category</label>

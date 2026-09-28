@@ -149,6 +149,10 @@ export const settings = pgTable("settings", {
    * through cashish. Not the platform's key (see `platformSettings`).
    */
   stripeSecretKey: text("stripe_secret_key").default(""),
+  /** The public quickshop at /shop/<slug>. Checkout runs on stripeSecretKey above. */
+  shopEnabled: boolean("shop_enabled").notNull().default(false),
+  /** Flat shipping charged once per shop order, in EUR. 0 = free. */
+  shopShipping: doublePrecision("shop_shipping").notNull().default(0),
 });
 
 export const vatRates = pgTable(
@@ -318,6 +322,10 @@ export const products = pgTable(
     }),
     sku: text("sku").default(""),
     archived: boolean("archived").notNull().default(false),
+    /** Listed on the tenant's public quickshop (`/shop/<slug>`). Off by default. */
+    shopVisible: boolean("shop_visible").notNull().default(false),
+    /** Blob pathname of the shop photo; '' = none. Served only while shopVisible. */
+    photoPath: text("photo_path").notNull().default(""),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [index("prod_tenant_idx").on(t.tenantId)],
