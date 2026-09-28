@@ -17,8 +17,22 @@ import { eq } from "drizzle-orm";
 
 const { platformSettings } = schema;
 
+/**
+ * STRIPE_API_BASE points the client at a local fake (tests/shop-api.test.ts)
+ * so the Stripe round-trip is exercised without the network. Unset everywhere real.
+ */
+function apiBase(): Pick<Stripe.StripeConfig, "host" | "port" | "protocol"> {
+  const base = process.env.STRIPE_API_BASE;
+  if (!base) return {};
+  const u = new URL(base);
+  return { host: u.hostname, port: Number(u.port), protocol: u.protocol === "http:" ? "http" : "https" };
+}
+
 function stripeClient(secretKey: string): Stripe {
-  return new Stripe(secretKey, { apiVersion: "2025-08-27.basil" as Stripe.LatestApiVersion });
+  return new Stripe(secretKey, {
+    apiVersion: "2025-08-27.basil" as Stripe.LatestApiVersion,
+    ...apiBase(),
+  });
 }
 
 export type PaymentLinkInput = {
@@ -89,6 +103,8 @@ export type ShopCheckoutInput = {
   collectAddress: boolean;
   successUrl: string;
   cancelUrl: string;
+  /** Stored on the session; `cashish_tenant` is what the order lookup checks ownership against. */
+  metadata: Record<string, string>;
 };
 
 // ponytail: EU27 + GB only. Widen (or make it a setting) when a tenant ships further.
@@ -105,7 +121,7 @@ const SHIP_TO = [
 export async function createTenantShopCheckout(
   secretKey: string,
   input: ShopCheckoutInput,
-): Promise<string> {
+): Promise<{ id: string; url: string }> {
   const stripe = stripeClient(secretKey);
   const currency = input.currency.toLowerCase();
   const session = await stripe.checkout.sessions.create({
@@ -138,7 +154,50 @@ export async function createTenantShopCheckout(
       : {}),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
+    metadata: input.metadata,
   });
   if (!session.url) throw new Error("Stripe did not return a checkout URL.");
-  return session.url;
+  return { id: session.id, url: session.url };
+}
+
+export type ShopOrder = {
+  sessionId: string;
+  /** Stripe's own status: 'open' | 'complete' | 'expired'. */
+  status: string | null;
+  paid: boolean;
+  currency: string;
+  /** Major units, incl. VAT and shipping. */
+  amountTotal: number;
+  email: string | null;
+  items: { name: string; quantity: number; amountTotal: number }[];
+  shippingAddress: Record<string, string | null> | null;
+  metadata: Record<string, string>;
+};
+
+/** Reads a quickshop Checkout Session back from the TENANT's Stripe account. */
+export async function getTenantShopOrder(secretKey: string, sessionId: string): Promise<ShopOrder> {
+  const stripe = stripeClient(secretKey);
+  const [session, lines] = await Promise.all([
+    stripe.checkout.sessions.retrieve(sessionId),
+    stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 }),
+  ]);
+  // The client runs API 2025-08-27.basil, where shipping moved under
+  // collected_information; the SDK types predate that, hence the fallback.
+  const shipping =
+    session.collected_information?.shipping_details ?? session.shipping_details ?? null;
+  return {
+    sessionId: session.id,
+    status: session.status,
+    paid: session.payment_status === "paid",
+    currency: (session.currency ?? "").toUpperCase(),
+    amountTotal: (session.amount_total ?? 0) / 100,
+    email: session.customer_details?.email ?? null,
+    items: lines.data.map((l) => ({
+      name: l.description ?? "",
+      quantity: l.quantity ?? 0,
+      amountTotal: l.amount_total / 100,
+    })),
+    shippingAddress: shipping ? { name: shipping.name ?? null, ...shipping.address } : null,
+    metadata: session.metadata ?? {},
+  };
 }

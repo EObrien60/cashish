@@ -30,6 +30,8 @@ const PUBLIC_PREFIXES = [
   "/api/mcp",
   // Authenticates with an API key, so the session gate must not intercept it.
   "/api/integration",
+  // Quickshop API: API key or OAuth token, checked in src/lib/shop-api.ts.
+  "/api/shop/",
   "/.well-known/",
   "/oauth/register",
   "/oauth/token",
