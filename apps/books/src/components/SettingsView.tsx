@@ -13,9 +13,10 @@ type Props = {
   settings: Settings;
   categories: Category[];
   vatRates: VatRate[];
+  shopUrl: string;
 };
 
-export function SettingsView({ settings, categories, vatRates }: Props) {
+export function SettingsView({ settings, categories, vatRates, shopUrl }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -35,7 +36,9 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
     nextInvoiceSeq: String(settings.nextInvoiceSeq ?? 1),
     invoiceFooter: settings.invoiceFooter ?? "",
     stripeSecretKey: settings.stripeSecretKey ?? "",
+    shopShipping: String(settings.shopShipping ?? 0),
   });
+  const [shopEnabled, setShopEnabled] = useState(settings.shopEnabled);
 
   function setB<K extends keyof typeof biz>(k: K, v: string) {
     setBiz((b) => ({ ...b, [k]: v }));
@@ -46,6 +49,8 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
       await saveSettings({
         ...biz,
         nextInvoiceSeq: Number(biz.nextInvoiceSeq) || 1,
+        shopShipping: Math.max(0, Number(biz.shopShipping) || 0),
+        shopEnabled,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -288,6 +293,47 @@ export function SettingsView({ settings, categories, vatRates }: Props) {
               Found in the Stripe Dashboard under Developers → API keys.
             </p>
           </div>
+          <button className="btn-primary mt-4" onClick={saveBiz}>
+            Save
+          </button>
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="mb-4 font-semibold">Quickshop</h2>
+          <p className="mb-4 text-xs text-ink-faint">
+            A public page listing the products you mark &quot;Show in shop&quot;. Checkout runs on
+            the Stripe key above, so orders are paid straight into your Stripe account.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={shopEnabled}
+              onChange={(e) => setShopEnabled(e.target.checked)}
+            />
+            Shop enabled
+          </label>
+          {shopEnabled && !biz.stripeSecretKey && (
+            <p className="mt-2 text-xs text-money-out">
+              Add a Stripe key above — without one the shop lists products but can&apos;t sell them.
+            </p>
+          )}
+          <div className="mt-4">
+            <label className="label">Flat shipping per order (€, goods only)</label>
+            <input
+              className="input tabular"
+              type="number"
+              step="0.01"
+              min="0"
+              value={biz.shopShipping}
+              onChange={(e) => setB("shopShipping", e.target.value)}
+            />
+          </div>
+          <p className="mt-4 text-xs text-ink-faint">
+            Your shop:{" "}
+            <a href={shopUrl} target="_blank" className="font-mono text-brand hover:underline">
+              {shopUrl}
+            </a>
+          </p>
           <button className="btn-primary mt-4" onClick={saveBiz}>
             Save
           </button>

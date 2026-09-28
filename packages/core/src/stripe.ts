@@ -71,3 +71,74 @@ export async function platformStripeClient(): Promise<Stripe | null> {
   if (!settings) return null;
   return stripeClient(settings.secretKey);
 }
+
+export type ShopCheckoutItem = {
+  /** Gross unit price (incl. VAT), major units. */
+  unitAmount: number;
+  quantity: number;
+  name: string;
+  description?: string;
+};
+
+export type ShopCheckoutInput = {
+  items: ShopCheckoutItem[];
+  currency: string;
+  /** Flat shipping for the order, major units. 0 = free. */
+  shipping: number;
+  /** Only goods need an address; an all-services order does not. */
+  collectAddress: boolean;
+  successUrl: string;
+  cancelUrl: string;
+};
+
+// ponytail: EU27 + GB only. Widen (or make it a setting) when a tenant ships further.
+const SHIP_TO = [
+  "IE", "GB", "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+  "HU", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+] as const;
+
+/**
+ * A Checkout Session for a quickshop cart, on the TENANT's own key.
+ * Checkout Sessions rather than Payment Links: prices and shipping go inline, so
+ * nothing is pre-created in the tenant's Stripe account per product.
+ */
+export async function createTenantShopCheckout(
+  secretKey: string,
+  input: ShopCheckoutInput,
+): Promise<string> {
+  const stripe = stripeClient(secretKey);
+  const currency = input.currency.toLowerCase();
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: input.items.map((item) => ({
+      price_data: {
+        currency,
+        unit_amount: Math.round(item.unitAmount * 100),
+        product_data: {
+          name: item.name,
+          ...(item.description ? { description: item.description } : {}),
+        },
+      },
+      quantity: item.quantity,
+      adjustable_quantity: { enabled: true, minimum: 0, maximum: 99 },
+    })),
+    ...(input.collectAddress
+      ? {
+          shipping_address_collection: { allowed_countries: [...SHIP_TO] },
+          shipping_options: [
+            {
+              shipping_rate_data: {
+                type: "fixed_amount" as const,
+                display_name: input.shipping > 0 ? "Shipping" : "Free shipping",
+                fixed_amount: { amount: Math.round(input.shipping * 100), currency },
+              },
+            },
+          ],
+        }
+      : {}),
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+  });
+  if (!session.url) throw new Error("Stripe did not return a checkout URL.");
+  return session.url;
+}

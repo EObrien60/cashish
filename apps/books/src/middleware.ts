@@ -25,6 +25,8 @@ const PUBLIC_PREFIXES = [
   "/register",
   "/login",
   "/accept-invite",
+  // Quickshop storefronts: public by design; each route checks the shop is on.
+  "/shop/",
   "/api/mcp",
   // Authenticates with an API key, so the session gate must not intercept it.
   "/api/integration",

@@ -120,6 +120,13 @@
       "when": 1790604670643,
       "tag": "0016_document_sha256",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790607266351,
+      "tag": "0017_quickshop",
+      "breakpoints": true
     }
   ]
 }
