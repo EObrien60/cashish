@@ -8,9 +8,9 @@ import { REPORT_MODEL, aiIsConfigured, describeFailure, gatewayOptions, type AiR
 import { putBlob, getBlob, deleteBlob } from "./storage";
 import { round2, addDays } from "./format";
 import { uid } from "./id";
-import { notExcluded } from "./transactions";
+import { notExcluded, notTransfer } from "./transactions";
 
-const { documents, transactions } = schema;
+const { documents, transactions, bills, billPayments, receipts, vendors, categories } = schema;
 
 // ---------------------------------------------------------------------------
 // Reading a document.
@@ -358,4 +358,136 @@ export async function confirmAsBill(
   const billId = typeof bill === "string" ? bill : (bill as { id: string }).id;
   await markConfirmed(id, billId);
   return { billId };
+}
+
+/**
+ * Putting a document's file on a bill that was entered without one.
+ *
+ * The enrichment case: the bill is already in the books (typed in, or posted
+ * from the bank), and the invoice for it turns up later. Only ever fills an
+ * empty slot: a bill that already carries a document keeps it, because
+ * replacing one invoice with another is a correction a person should make.
+ */
+export async function attachBillFile(billId: string, documentId: string): Promise<void> {
+  const tid = tenantId();
+  const bill = first(
+    await db.select().from(bills).where(and(eq(bills.tenantId, tid), eq(bills.id, billId))).limit(1),
+  );
+  if (!bill) throw new Error("No such bill in this book.");
+  if (bill.storagePath) throw new Error("That bill already has a document; it is not replaced.");
+
+  const doc = await getDocument(documentId);
+  if (!doc) throw new Error("No such document in this book.");
+  if (doc.status === "confirmed" || doc.status === "rejected") {
+    throw new Error(`That document is already ${doc.status}.`);
+  }
+  const file = await getDocumentFile(documentId);
+  if (!file) throw new Error("That document's file is no longer in storage.");
+
+  // Same namespacing as createBill, so the bill's file route serves it unchanged.
+  const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+  const stored = await putBlob(`tenants/${tid}/bills/${billId}${ext}`, file.bytes, file.mime);
+  await db
+    .update(bills)
+    .set({ fileName: file.name, mimeType: file.mime, fileSize: file.bytes.length, storagePath: stored.pathname })
+    .where(and(eq(bills.tenantId, tid), eq(bills.id, billId)));
+  await markConfirmed(documentId, billId);
+}
+
+/**
+ * Money out that somebody has already tagged, with nothing to show for it.
+ *
+ * "Tagged" is a category or a supplier set on the line. "Nothing to show" is no
+ * bill posted against it, no receipt and no linked document. This is the list
+ * an agent works through to go and find the missing invoices.
+ *
+ * Wages are left out: a payment to someone on the payroll has a payslip, not a
+ * supplier invoice, and would only ever come back as "nothing found".
+ */
+export async function transactionsMissingDocuments(filter: { from?: string; to?: string; limit?: number } = {}) {
+  const tid = tenantId();
+  const conds = [
+    eq(transactions.tenantId, tid),
+    sql`${transactions.amount} < 0`,
+    notExcluded(),
+    notTransfer(),
+    sql`${transactions.employeeId} is null`,
+    sql`(${transactions.categoryId} is not null or ${transactions.vendorId} is not null)`,
+    sql`not exists (select 1 from ${billPayments} where ${billPayments.tenantId} = ${tid} and ${billPayments.transactionId} = ${transactions.id})`,
+    sql`not exists (select 1 from ${receipts} where ${receipts.tenantId} = ${tid} and ${receipts.transactionId} = ${transactions.id})`,
+    sql`not exists (select 1 from ${documents} where ${documents.tenantId} = ${tid} and ${documents.transactionId} = ${transactions.id})`,
+  ];
+  if (filter.from) conds.push(gte(transactions.bookedDate, filter.from));
+  if (filter.to) conds.push(lte(transactions.bookedDate, filter.to));
+
+  return db
+    .select({
+      id: transactions.id,
+      date: transactions.bookedDate,
+      amount: transactions.amount,
+      description: transactions.description,
+      categoryId: transactions.categoryId,
+      categoryName: categories.name,
+      vendorId: transactions.vendorId,
+      vendorName: vendors.name,
+    })
+    .from(transactions)
+    .leftJoin(categories, and(eq(categories.id, transactions.categoryId), eq(categories.tenantId, tid)))
+    .leftJoin(vendors, and(eq(vendors.id, transactions.vendorId), eq(vendors.tenantId, tid)))
+    .where(and(...conds))
+    .orderBy(desc(transactions.bookedDate))
+    .limit(Math.min(filter.limit ?? 200, 1000));
+}
+
+/** One of this book's bank lines, or null. */
+export async function ownTransaction(id: string) {
+  return first(
+    await db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.tenantId, tenantId()), eq(transactions.id, id)))
+      .limit(1),
+  );
+}
+
+/**
+ * Whether a bill confirmed from this document may be posted against a bank line,
+ * checked BEFORE anything is created.
+ *
+ * confirmAsBill creates the bill and then posts it, so a posting refused halfway
+ * would leave a bill behind with the document still pending. Everything
+ * postBillToTransaction would refuse is refused here first, plus one thing it
+ * does not check: the amount. The bank line has to be one of the document's own
+ * candidates, or the same amount as the bill to the cent. Returns the line, so
+ * the caller can keep the category somebody already gave it.
+ */
+export async function postableTransaction(
+  documentId: string,
+  transactionId: string,
+  bill: { total: number; issueDate: string },
+) {
+  const tx = await ownTransaction(transactionId);
+  if (!tx) throw new Error("No such transaction in this book.");
+  if (tx.amount >= 0) throw new Error("That transaction is money in, so it cannot pay a bill.");
+  if (tx.bookedDate < bill.issueDate) {
+    throw new Error("That payment left the account before the bill was issued, so it cannot be what paid it.");
+  }
+  const posted = first(
+    await db
+      .select({ id: billPayments.id })
+      .from(billPayments)
+      .where(and(eq(billPayments.tenantId, tenantId()), eq(billPayments.transactionId, transactionId)))
+      .limit(1),
+  );
+  if (posted) throw new Error("That transaction is already posted to a bill.");
+
+  const sameAmount = Math.abs(Math.abs(tx.amount) - bill.total) < 0.005;
+  const offered = (await candidateTransactions(documentId)).some((c) => c.id === transactionId);
+  if (!sameAmount && !offered) {
+    throw new Error(
+      `That payment is €${Math.abs(tx.amount).toFixed(2)} and the bill is €${bill.total.toFixed(2)}, ` +
+        "and it is not one of this document's candidate payments. Nothing was created.",
+    );
+  }
+  return tx;
 }

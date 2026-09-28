@@ -122,19 +122,43 @@ restricted credential would.
 `cashish_rules`, `cashish_test_rule`, `cashish_customers`, `cashish_invoices`,
 `cashish_invoice`, `cashish_reconcile`, `cashish_unmatched_inflows`,
 `cashish_recurring`, `cashish_reports`, `cashish_integration_summary`,
-`cashish_documents`, `cashish_document`, `cashish_vendors`, `cashish_bills`, `cashish_bill`.
+`cashish_documents`, `cashish_document`, `cashish_vendors`, `cashish_bills`, `cashish_bill`,
+`cashish_transactions_missing_documents`.
 
 **Write** — `cashish_save_rule`, `cashish_delete_rule`, `cashish_apply_rules`,
 `cashish_categorise`, `cashish_note_transaction`, `cashish_exclude_transactions`,
 `cashish_create_customer`, `cashish_update_customer`, `cashish_create_invoice`,
 `cashish_match_payment`, `cashish_delete_payment`, `cashish_delete_invoice`,
 `cashish_set_invoice_status`, `cashish_save_recurring`,
-`cashish_generate_due_recurring`.
+`cashish_generate_due_recurring`, `cashish_confirm_document_as_bill`,
+`cashish_link_document_to_transaction`, `cashish_attach_bill_file`,
+`cashish_reject_document`.
 
 **Import** (`books:import`, as uploading in the UI) — `cashish_upload_document`:
 a PDF or image, base64, up to 10 MB, into the documents inbox. It writes nothing
 to the books; the same bytes uploaded again return the first document with
 `deduped: true`.
+
+### From an uploaded invoice to the books
+
+Upload the file, read `cashish_document` for what was extracted and the
+`candidateTransactions` it could belong to, then do one of:
+
+- **A bill already exists without its invoice** (`cashish_bills` with
+  `missingFile: true`): `cashish_attach_bill_file`. A bill that already has a
+  file is never overwritten.
+- **The payment is already in the bank and tagged** (`cashish_transactions_missing_documents`
+  lists them): `cashish_confirm_document_as_bill` with `paidByTransactionId`. The
+  line must be a candidate or the same amount to the cent; the bill keeps the
+  line's category unless `categoryId` says otherwise. All checks run before the
+  bill is created, so a refusal leaves nothing behind.
+- **A card receipt:** `cashish_link_document_to_transaction`.
+- **Nothing matches:** `cashish_confirm_document_as_bill` without a payment, which
+  creates an awaiting bill.
+- **Not something to book:** `cashish_reject_document`.
+
+A document is confirmed at most once. Never pick between several candidates on
+someone's behalf; that is the person's call, as it is on screen.
 
 ### The reconciliation loop
 
