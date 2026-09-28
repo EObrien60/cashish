@@ -148,3 +148,26 @@ export async function ownShopPath(): Promise<string> {
   );
   return `/shop/${encodeURIComponent(row?.slug ?? "")}`;
 }
+
+export const MAX_QTY = 99;
+
+export type CartLine = { product: ShopProduct; quantity: number };
+
+/**
+ * Turns a posted shop form (`qty:<productId>` → quantity) into cart lines.
+ * Anything the visitor could tamper with is re-checked here: only products
+ * currently listed in THIS shop count, prices come from the database, and a
+ * quantity that is not a whole number from 1 to MAX_QTY is dropped.
+ */
+export async function resolveCart(entries: Iterable<[string, unknown]>): Promise<CartLine[]> {
+  const wanted = new Map<string, number>();
+  for (const [key, raw] of entries) {
+    if (!key.startsWith("qty:")) continue;
+    const qty = Number(raw);
+    if (Number.isInteger(qty) && qty >= 1 && qty <= MAX_QTY) wanted.set(key.slice(4), qty);
+  }
+  if (wanted.size === 0) return [];
+  return (await listShopProducts())
+    .filter((p) => wanted.has(p.id) && p.grossPrice > 0)
+    .map((product) => ({ product, quantity: wanted.get(product.id)! }));
+}

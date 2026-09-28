@@ -72,15 +72,20 @@ export async function platformStripeClient(): Promise<Stripe | null> {
   return stripeClient(settings.secretKey);
 }
 
-export type ShopCheckoutInput = {
+export type ShopCheckoutItem = {
   /** Gross unit price (incl. VAT), major units. */
   unitAmount: number;
-  currency: string;
+  quantity: number;
   name: string;
   description?: string;
+};
+
+export type ShopCheckoutInput = {
+  items: ShopCheckoutItem[];
+  currency: string;
   /** Flat shipping for the order, major units. 0 = free. */
   shipping: number;
-  /** Only goods need an address; a service sold in the shop does not. */
+  /** Only goods need an address; an all-services order does not. */
   collectAddress: boolean;
   successUrl: string;
   cancelUrl: string;
@@ -93,8 +98,8 @@ const SHIP_TO = [
 ] as const;
 
 /**
- * A Checkout Session for one quickshop product, on the TENANT's own key.
- * Checkout Sessions rather than Payment Links: price and shipping go inline, so
+ * A Checkout Session for a quickshop cart, on the TENANT's own key.
+ * Checkout Sessions rather than Payment Links: prices and shipping go inline, so
  * nothing is pre-created in the tenant's Stripe account per product.
  */
 export async function createTenantShopCheckout(
@@ -105,20 +110,18 @@ export async function createTenantShopCheckout(
   const currency = input.currency.toLowerCase();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    line_items: [
-      {
-        price_data: {
-          currency,
-          unit_amount: Math.round(input.unitAmount * 100),
-          product_data: {
-            name: input.name,
-            ...(input.description ? { description: input.description } : {}),
-          },
+    line_items: input.items.map((item) => ({
+      price_data: {
+        currency,
+        unit_amount: Math.round(item.unitAmount * 100),
+        product_data: {
+          name: item.name,
+          ...(item.description ? { description: item.description } : {}),
         },
-        quantity: 1,
-        adjustable_quantity: { enabled: true, minimum: 1, maximum: 99 },
       },
-    ],
+      quantity: item.quantity,
+      adjustable_quantity: { enabled: true, minimum: 0, maximum: 99 },
+    })),
     ...(input.collectAddress
       ? {
           shipping_address_collection: { allowed_countries: [...SHIP_TO] },

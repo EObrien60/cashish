@@ -4,7 +4,8 @@
  * The shop is the one unauthenticated read into a tenant's books, so what
  * matters is what it refuses: a shop that is switched off, a product that is
  * hidden or archived, another tenant's product under this tenant's slug, and a
- * photo of anything not currently listed.
+ * photo of anything not currently listed — and, for the cart, any posted line
+ * that is not a listed product of this shop at a sane quantity.
  */
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
@@ -12,7 +13,13 @@ import { eq } from "drizzle-orm";
 import { asTenant, makeTenant, seeded, closePool } from "./harness";
 import { db, schema } from "@cashish/core/db";
 import { uid } from "../src/lib/id";
-import { withShop, listShopProducts, getShopProduct, setProductPhoto } from "../src/lib/shop";
+import {
+  withShop,
+  listShopProducts,
+  getShopProduct,
+  setProductPhoto,
+  resolveCart,
+} from "../src/lib/shop";
 import { GET as photo } from "../src/app/shop/[slug]/img/[id]/route";
 
 let a: { id: string; slug: string };
@@ -84,4 +91,30 @@ test("serves a listed product's photo and refuses a hidden one", async () => {
   await enable(a.id, true);
   assert.equal(await photoStatus(a.slug, listed), 200);
   assert.equal(await photoStatus(a.slug, hidden), 404);
+});
+
+test("the cart keeps only listed products of this shop at whole quantities 1..99", async () => {
+  await enable(a.id, true);
+  await enable(b.id, true);
+  const bThing = await withShop(b.slug, async () => (await listShopProducts())[0].id);
+  const cart = await withShop(a.slug, () =>
+    resolveCart([
+      [`qty:${listed}`, "2"],
+      [`qty:${hidden}`, "1"], // hidden
+      [`qty:${bThing}`, "1"], // another tenant's
+      ["qty:nope", "1"], // does not exist
+      ["price", "0.01"], // not a cart field; price always comes from the DB
+    ]),
+  );
+  assert.deepEqual(
+    cart?.map((l) => [l.product.name, l.quantity, l.product.grossPrice]),
+    [["Mug", 2, 123]],
+  );
+  for (const bad of ["0", "-1", "1.5", "100", "abc", ""]) {
+    assert.deepEqual(
+      await withShop(a.slug, () => resolveCart([[`qty:${listed}`, bad]])),
+      [],
+      `qty ${JSON.stringify(bad)} must be dropped`,
+    );
+  }
 });
