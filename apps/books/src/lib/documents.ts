@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { extname } from "node:path";
 import { db, first, schema, tenantId } from "@cashish/core/db";
 import { REPORT_MODEL, aiIsConfigured, describeFailure, gatewayOptions, type AiResult } from "./ai";
@@ -79,6 +80,7 @@ export async function saveDocument(file: {
   await db.insert(documents).values({
     id,
     tenantId: tid,
+    sha256: sha256Hex(file.bytes),
     fileName: file.name,
     mimeType: file.type || "application/octet-stream",
     size: file.bytes.length,
@@ -86,6 +88,29 @@ export async function saveDocument(file: {
     status: "pending",
   });
   return id;
+}
+
+export const sha256Hex = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+
+/** The earliest document in this book with exactly these bytes, if any. */
+export async function findDocumentBySha256(sha256: string): Promise<DocumentRow | null> {
+  const doc = first(
+    await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.tenantId, tenantId()), eq(documents.sha256, sha256)))
+      .orderBy(asc(documents.uploadedAt))
+      .limit(1),
+  );
+  return doc ? toRow(doc) : null;
+}
+
+/** One document as a DocumentRow, or null if it is not in this book. */
+export async function getDocument(id: string): Promise<DocumentRow | null> {
+  const doc = first(
+    await db.select().from(documents).where(and(eq(documents.tenantId, tenantId()), eq(documents.id, id))).limit(1),
+  );
+  return doc ? toRow(doc) : null;
 }
 
 /** Reads one stored document. Safe to re-run: it overwrites its own extraction. */
@@ -180,7 +205,11 @@ export async function listDocuments(status?: string): Promise<DocumentRow[]> {
     )
     .orderBy(desc(documents.uploadedAt));
 
-  return rows.map((d) => ({
+  return rows.map(toRow);
+}
+
+function toRow(d: typeof documents.$inferSelect): DocumentRow {
+  return {
     id: d.id,
     fileName: d.fileName,
     mimeType: d.mimeType,
@@ -192,7 +221,7 @@ export async function listDocuments(status?: string): Promise<DocumentRow[]> {
     extraction: parseExtraction(d.extraction),
     billId: d.billId,
     transactionId: d.transactionId,
-  }));
+  };
 }
 
 export async function getDocumentFile(id: string) {

@@ -59,6 +59,21 @@ import {
 } from "../src/lib/transactions";
 import { computeVatReturn } from "../src/lib/vat";
 import { countDue, generateDue, listRecurring, saveRecurring } from "../src/lib/recurring";
+import {
+  candidateTransactions,
+  extractDocument,
+  findDocumentBySha256,
+  getDocument,
+  listDocuments,
+  saveDocument,
+  sha256Hex,
+} from "../src/lib/documents";
+import { ALLOWED_BILL_MIME, getBill, listBills } from "../src/lib/bills";
+import { listVendors } from "../src/lib/vendors";
+import { aiAvailable, aiDisabledFailure } from "../src/lib/ai";
+
+/** Invoices and receipts are small; this is a sanity bound, not a quota. */
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 const text = (value: unknown) => ({
   content: [
@@ -402,6 +417,80 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
       inputSchema: { asOf: z.string().optional() },
     },
     async ({ asOf }) => text(await buildIntegrationSummary(asOf)),
+  );
+
+  /* --------------------------------------------- documents, vendors, bills --- */
+  //
+  // Reading only. Nothing here returns file bytes or a storage path: a bill's
+  // file is somebody's invoice, served to signed-in members by the app itself.
+
+  server.registerTool(
+    "cashish_documents",
+    {
+      title: "List documents in the inbox",
+      description:
+        "Uploaded documents (supplier invoices, receipts) and what the model read from each. status: pending | confirmed | rejected | failed. A document changes nothing in the books until it is confirmed.",
+      inputSchema: { status: z.enum(["pending", "confirmed", "rejected", "failed"]).optional() },
+    },
+    async ({ status }) => text(await listDocuments(status)),
+  );
+
+  server.registerTool(
+    "cashish_document",
+    {
+      title: "One document, with the payments it might belong to",
+      description:
+        "A document's extraction plus candidateTransactions: bank lines with the same amount to the cent within three weeks of its date. Candidates are offered, never assumed.",
+      inputSchema: { id: z.string() },
+    },
+    async ({ id }) => {
+      const doc = await getDocument(id);
+      if (!doc) return fail("No such document in this book.");
+      return text({ ...doc, candidateTransactions: await candidateTransactions(id) });
+    },
+  );
+
+  server.registerTool(
+    "cashish_vendors",
+    {
+      title: "List suppliers",
+      description: "Suppliers (vendors) you are billed by. search matches name or email, case-insensitively.",
+      inputSchema: {
+        search: z.string().optional(),
+        includeArchived: z.boolean().optional(),
+      },
+    },
+    async ({ search, includeArchived }) => text(await listVendors({ search, includeArchived })),
+  );
+
+  server.registerTool(
+    "cashish_bills",
+    {
+      title: "List bills",
+      description:
+        "Supplier bills of any status, newest first. hasFile says whether the invoice document is attached; missingFile: true lists only those without one.",
+      inputSchema: {
+        status: z.enum(["awaiting", "partial", "paid", "void"]).optional(),
+        vendorId: z.string().optional(),
+        missingFile: z.boolean().optional(),
+      },
+    },
+    async (filter) => text(await listBills(filter)),
+  );
+
+  server.registerTool(
+    "cashish_bill",
+    {
+      title: "One bill, with its payments",
+      description: "A bill, what has been paid against it and what is outstanding. hasFile says whether the invoice document is attached.",
+      inputSchema: { id: z.string() },
+    },
+    async ({ id }) => {
+      const bill = await getBill(id);
+      if (!bill) return fail("No such bill in this book.");
+      const { storagePath, fileName, mimeType, fileSize, ...rest } = bill;
+      return text({ ...rest, hasFile: !!storagePath });
+    },
   );
 
   /* ----------------------------------------------------------------- writing --- */
@@ -807,6 +896,47 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
     async () => {
       if (!canWrite) return writeGuard();
       return text(await generateDue());
+    },
+  );
+  /* --------------------------------------------------------------- importing --- */
+  //
+  // books:import, the same capability as uploading from the UI: a document is a
+  // proposal and writes nothing to the books until somebody confirms it.
+
+  const canImport = can(role, "books:import");
+
+  server.registerTool(
+    "cashish_upload_document",
+    {
+      title: "Upload a document to the inbox",
+      description:
+        "Stores a supplier invoice or receipt (PDF or image, base64, up to 10 MB) and reads it into fields. It changes nothing in the books. The same bytes uploaded again return the existing document with deduped: true.",
+      inputSchema: {
+        fileName: z.string().min(1),
+        mimeType: z.string(),
+        // Bounds memory before decoding; the byte limit is checked after.
+        base64: z.string().min(1).max(14_000_000),
+      },
+    },
+    async ({ fileName, mimeType, base64 }) => {
+      if (!canImport) {
+        return fail(`This credential has the "${role}" role, which cannot upload documents.`);
+      }
+      if (!ALLOWED_BILL_MIME.includes(mimeType)) {
+        return fail(`Only ${ALLOWED_BILL_MIME.join(", ")} are accepted.`);
+      }
+      const bytes = Buffer.from(base64, "base64");
+      if (bytes.length === 0) return fail("The file is empty or not valid base64.");
+      if (bytes.length > MAX_DOCUMENT_BYTES) return fail("Max 10 MB.");
+
+      // ponytail: check-then-insert, so two simultaneous uploads of one file can both land; fine for one agent per book, add a lock if that changes.
+      const existing = await findDocumentBySha256(sha256Hex(bytes));
+      if (existing) return text({ ...existing, deduped: true });
+
+      const id = await saveDocument({ name: fileName, type: mimeType, bytes });
+      const read = (await aiAvailable()) ? await extractDocument(id) : aiDisabledFailure();
+      const doc = await getDocument(id);
+      return text({ ...doc, deduped: false, ...(read.ok ? {} : { readError: read.reason }) });
     },
   );
 }

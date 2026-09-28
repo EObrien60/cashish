@@ -284,6 +284,39 @@ export async function getBillFile(id: string) {
   return { meta: bill, bytes: await getBlob(bill.storagePath) };
 }
 
+/**
+ * Every bill, any status, newest first — for finding one to attach a document
+ * to, which may already be paid. Says whether a file is attached, never where.
+ */
+export async function listBills(filter: { status?: string; vendorId?: string; missingFile?: boolean } = {}) {
+  const tid = tenantId();
+  const conds = [eq(bills.tenantId, tid)];
+  if (filter.status) conds.push(eq(bills.status, filter.status));
+  if (filter.vendorId) conds.push(eq(bills.vendorId, filter.vendorId));
+  if (filter.missingFile) conds.push(sql`coalesce(${bills.storagePath}, '') = ''`);
+  const rows = await db
+    .select({
+      id: bills.id,
+      number: bills.number,
+      issueDate: bills.issueDate,
+      dueDate: bills.dueDate,
+      net: bills.net,
+      vatTotal: bills.vatTotal,
+      total: bills.total,
+      amountPaid: bills.amountPaid,
+      status: bills.status,
+      categoryId: bills.categoryId,
+      vendorId: vendors.id,
+      vendorName: vendors.name,
+      storagePath: bills.storagePath,
+    })
+    .from(bills)
+    .innerJoin(vendors, and(eq(bills.vendorId, vendors.id), eq(vendors.tenantId, tid)))
+    .where(and(...conds))
+    .orderBy(desc(bills.issueDate));
+  return rows.map(({ storagePath, ...r }) => ({ ...r, hasFile: !!storagePath }));
+}
+
 /** Everything owed, oldest first — the payables run. */
 export async function listPayables() {
   const tid = tenantId();

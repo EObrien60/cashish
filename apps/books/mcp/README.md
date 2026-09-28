@@ -121,7 +121,8 @@ restricted credential would.
 **Read** — `cashish_overview`, `cashish_transactions`, `cashish_categories`,
 `cashish_rules`, `cashish_test_rule`, `cashish_customers`, `cashish_invoices`,
 `cashish_invoice`, `cashish_reconcile`, `cashish_unmatched_inflows`,
-`cashish_recurring`, `cashish_reports`, `cashish_integration_summary`.
+`cashish_recurring`, `cashish_reports`, `cashish_integration_summary`,
+`cashish_documents`, `cashish_document`, `cashish_vendors`, `cashish_bills`, `cashish_bill`.
 
 **Write** — `cashish_save_rule`, `cashish_delete_rule`, `cashish_apply_rules`,
 `cashish_categorise`, `cashish_note_transaction`, `cashish_exclude_transactions`,
@@ -129,6 +130,11 @@ restricted credential would.
 `cashish_match_payment`, `cashish_delete_payment`, `cashish_delete_invoice`,
 `cashish_set_invoice_status`, `cashish_save_recurring`,
 `cashish_generate_due_recurring`.
+
+**Import** (`books:import`, as uploading in the UI) — `cashish_upload_document`:
+a PDF or image, base64, up to 10 MB, into the documents inbox. It writes nothing
+to the books; the same bytes uploaded again return the first document with
+`deduped: true`.
 
 ### The reconciliation loop
 
