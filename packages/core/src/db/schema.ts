@@ -444,6 +444,12 @@ export const documents = pgTable(
     extraction: text("extraction").default(""),
     /** Why it could not be read, when it could not. */
     error: text("error").default(""),
+    /**
+     * SHA-256 of the bytes, hex. Lets an agent that uploads the same invoice
+     * twice get the first document back. Not unique: a person may deliberately
+     * upload the same file twice from the UI, and that stays allowed.
+     */
+    sha256: text("sha256").notNull().default(""),
     /** What confirming it created, so the two can be found from each other. */
     billId: text("bill_id").references(() => bills.id, { onDelete: "set null" }),
     transactionId: text("transaction_id"),
@@ -452,6 +458,7 @@ export const documents = pgTable(
   },
   (t) => [
     index("document_status_idx").on(t.tenantId, t.status),
+    index("document_sha256_idx").on(t.tenantId, t.sha256),
     // Same composite-FK reasoning as receipts: transactions has a composite key.
     foreignKey({
       columns: [t.tenantId, t.transactionId],
