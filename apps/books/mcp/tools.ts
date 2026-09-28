@@ -60,17 +60,25 @@ import {
 import { computeVatReturn } from "../src/lib/vat";
 import { countDue, generateDue, listRecurring, saveRecurring } from "../src/lib/recurring";
 import {
+  attachBillFile,
   candidateTransactions,
+  confirmAsBill,
   extractDocument,
   findDocumentBySha256,
   getDocument,
+  linkToTransaction,
   listDocuments,
+  ownTransaction,
+  postableTransaction,
+  rejectDocument,
   saveDocument,
   sha256Hex,
+  transactionsMissingDocuments,
 } from "../src/lib/documents";
 import { ALLOWED_BILL_MIME, getBill, listBills } from "../src/lib/bills";
 import { listVendors } from "../src/lib/vendors";
 import { aiAvailable, aiDisabledFailure } from "../src/lib/ai";
+import { round2 } from "../src/lib/format";
 
 /** Invoices and receipts are small; this is a sanity bound, not a quota. */
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
@@ -83,6 +91,14 @@ const text = (value: unknown) => ({
     },
   ],
 });
+
+/** A bill as tools return it: whether it has a file, never where the file lives. */
+async function safeBill(id: string) {
+  const bill = await getBill(id);
+  if (!bill) return null;
+  const { storagePath, fileName, mimeType, fileSize, ...rest } = bill;
+  return { ...rest, hasFile: !!storagePath };
+}
 
 const fail = (message: string) => ({
   content: [{ type: "text" as const, text: message }],
@@ -464,6 +480,21 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
   );
 
   server.registerTool(
+    "cashish_transactions_missing_documents",
+    {
+      title: "Tagged payments with no paperwork",
+      description:
+        "Money out that already has a category or a supplier set, but no bill posted against it, no receipt and no linked document — the payments whose invoices are still to be found. Wages are left out. Newest first; limit defaults to 200 (max 1000).",
+      inputSchema: {
+        from: z.string().optional().describe("ISO date, inclusive"),
+        to: z.string().optional().describe("ISO date, inclusive"),
+        limit: z.number().int().positive().max(1000).optional(),
+      },
+    },
+    async ({ from, to, limit }) => text(await transactionsMissingDocuments({ from, to, limit })),
+  );
+
+  server.registerTool(
     "cashish_bills",
     {
       title: "List bills",
@@ -486,10 +517,8 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
       inputSchema: { id: z.string() },
     },
     async ({ id }) => {
-      const bill = await getBill(id);
-      if (!bill) return fail("No such bill in this book.");
-      const { storagePath, fileName, mimeType, fileSize, ...rest } = bill;
-      return text({ ...rest, hasFile: !!storagePath });
+      const bill = await safeBill(id);
+      return bill ? text(bill) : fail("No such bill in this book.");
     },
   );
 
@@ -937,6 +966,119 @@ export function registerTools(server: McpServer, { role }: { role: Role }) {
       const read = (await aiAvailable()) ? await extractDocument(id) : aiDisabledFailure();
       const doc = await getDocument(id);
       return text({ ...doc, deduped: false, ...(read.ok ? {} : { readError: read.reason }) });
+    },
+  );
+
+  /* ------------------------------------------------- confirming documents --- */
+  //
+  // These WRITE TO THE BOOKS. books:write, the same capability as confirming on
+  // screen (confirmDocumentAsBillAction and friends). A document is only ever
+  // confirmed once: a second confirm would be a second bill for one invoice.
+
+  const stillOpen = async (documentId: string) => {
+    const doc = await getDocument(documentId);
+    if (!doc) return { error: "No such document in this book." };
+    if (doc.status === "confirmed" || doc.status === "rejected") {
+      return { error: `That document is already ${doc.status}; nothing was changed.` };
+    }
+    return { doc };
+  };
+
+  server.registerTool(
+    "cashish_confirm_document_as_bill",
+    {
+      title: "Confirm a document as a bill (writes to the books)",
+      description:
+        "WRITES TO THE BOOKS. Turns an uploaded document into a supplier bill with the document's file attached, reusing the supplier by name or creating it. Use the numbers as printed (net and VAT; total is derived). paidByTransactionId posts it against the bank line that paid it: that line must be one of the document's candidateTransactions or the same amount as the bill to the cent, and when categoryId is omitted the bill keeps the category already on that line. Everything is checked before anything is created.",
+      inputSchema: {
+        documentId: z.string(),
+        vendorName: z.string().min(1),
+        number: z.string().optional(),
+        issueDate: z.string().describe("YYYY-MM-DD"),
+        dueDate: z.string().optional(),
+        net: z.number(),
+        vatTotal: z.number(),
+        categoryId: z.string().optional(),
+        paidByTransactionId: z.string().optional(),
+      },
+    },
+    async ({ documentId, paidByTransactionId, categoryId, ...input }) => {
+      if (!canWrite) return writeGuard();
+      const open = await stillOpen(documentId);
+      if (open.error) return fail(open.error);
+      let category = categoryId ?? null;
+      if (paidByTransactionId) {
+        try {
+          const tx = await postableTransaction(documentId, paidByTransactionId, {
+            total: round2(input.net + input.vatTotal),
+            issueDate: input.issueDate,
+          });
+          category = categoryId ?? tx.categoryId ?? null;
+        } catch (err) {
+          return fail((err as Error).message);
+        }
+      }
+      const { billId } = await confirmAsBill(documentId, {
+        ...input,
+        dueDate: input.dueDate ?? null,
+        categoryId: category,
+        paidByTransactionId: paidByTransactionId ?? null,
+      });
+      return text({ billId, bill: await safeBill(billId) });
+    },
+  );
+
+  server.registerTool(
+    "cashish_link_document_to_transaction",
+    {
+      title: "Attach a document to a bank line (writes to the books)",
+      description:
+        "WRITES TO THE BOOKS. Marks a document (typically a receipt) as the paperwork for a bank transaction and confirms it. Does not create a bill.",
+      inputSchema: { documentId: z.string(), transactionId: z.string() },
+    },
+    async ({ documentId, transactionId }) => {
+      if (!canWrite) return writeGuard();
+      const open = await stillOpen(documentId);
+      if (open.error) return fail(open.error);
+      if (!(await ownTransaction(transactionId))) return fail("No such transaction in this book.");
+      await linkToTransaction(documentId, transactionId);
+      return text(await getDocument(documentId));
+    },
+  );
+
+  server.registerTool(
+    "cashish_attach_bill_file",
+    {
+      title: "Put a document's file on an existing bill (writes to the books)",
+      description:
+        "WRITES TO THE BOOKS. For a bill that was entered without its invoice: copies the document's file onto the bill and confirms the document against it. Refuses a bill that already has a file — it is never replaced.",
+      inputSchema: { billId: z.string(), documentId: z.string() },
+    },
+    async ({ billId, documentId }) => {
+      if (!canWrite) return writeGuard();
+      try {
+        await attachBillFile(billId, documentId);
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+      return text(await safeBill(billId));
+    },
+  );
+
+  server.registerTool(
+    "cashish_reject_document",
+    {
+      title: "Reject a document",
+      description:
+        "Marks a document as not something to book (not a bill, a duplicate, unreadable). Keeps the file and its extraction. Changes nothing else in the books.",
+      inputSchema: { documentId: z.string() },
+    },
+    async ({ documentId }) => {
+      if (!canWrite) return writeGuard();
+      const open = await stillOpen(documentId);
+      if (open.error) return fail(open.error);
+      await rejectDocument(documentId);
+      return text(await getDocument(documentId));
     },
   );
 }
